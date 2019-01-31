@@ -11,7 +11,7 @@ using glm::mat3;
 
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 256
-#define FULLSCREEN_MODE false
+#define FULLSCREEN_MODE true
 
 
 /* ----------------------------------------------------------------------------*/
@@ -34,25 +34,11 @@ int main( int argc, char* argv[] ) {
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
   t = SDL_GetTicks();	/*Set start value for timer.*/
 
-  while( NoQuitMessageSDL() )
-    {
-      Draw(screen);
-      Update();
-      SDL_Renderframe(screen);
-    }
-
-    vector<vec3> result( 4 );
-    vec3 a(1,4,9.2);
-    vec3 b(4,1,9.8);
-    Interpolate( a, b, result );
-    for( int i=0; i<result.size(); ++i )
-    {
-       cout << "( "
-            << result[i].x << ", "
-            << result[i].y << ", "
-            << result[i].z << " ) ";
+  while( NoQuitMessageSDL() ) {
+    Draw(screen);
+    Update();
+    SDL_Renderframe(screen);
   }
-
 
   SDL_SaveImage( screen, "screenshot.bmp" );
 
@@ -65,20 +51,32 @@ void Draw(screen* screen) {
   /* Clear buffer */
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
 
-  vec3 colour(1.0,0.0,0.0);
-  for(int i=0; i<1000; i++)
-    {
-      uint32_t x = rand() % screen->width;
-      uint32_t y = rand() % screen->height;
-      PutPixelSDL(screen, x, y, colour);
+  vec3 topLeft(1,0,0); //red
+  vec3 topRight(0,0,1); // blue
+  vec3 bottomRight(0,1,0); // green
+  vec3 bottomLeft(1,1,0); // yellow
+
+  vector<vec3> leftSide( SCREEN_HEIGHT );
+  vector<vec3> rightSide( SCREEN_HEIGHT );
+  Interpolate( topLeft, bottomLeft, leftSide );
+  Interpolate( topRight, bottomRight, rightSide );
+
+  // vec3 colour(1.0,0.0,0.0);
+  for(int y = 0; y < SCREEN_HEIGHT; y++) {
+    vector<vec3> row( SCREEN_WIDTH );
+    Interpolate(leftSide[y], rightSide[y], row);
+
+    for(int x = 0; x < SCREEN_WIDTH; x++) {
+      PutPixelSDL(screen, x, y, row[x]);
     }
+  }
 }
 
 /*Place updates of parameters here*/
 void Update() {
   /* Compute frame time */
   int t2 = SDL_GetTicks();
-  float dt = float(t2-t);
+  //float dt = float(t2-t);
   t = t2;
   /*Good idea to remove this*/
   // std::cout << "Render time: " << dt << " ms." << std::endl;
