@@ -11,7 +11,7 @@ using glm::mat3;
 
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 256
-#define FULLSCREEN_MODE true
+#define FULLSCREEN_MODE false
 
 
 /* ----------------------------------------------------------------------------*/
@@ -19,6 +19,7 @@ using glm::mat3;
 /* ----------------------------------------------------------------------------*/
 
 int t;
+vector<vec3> stars( 1000 );
 
 /* ----------------------------------------------------------------------------*/
 /* FUNCTIONS                                                                   */
@@ -33,6 +34,21 @@ int main( int argc, char* argv[] ) {
 
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
   t = SDL_GetTicks();	/*Set start value for timer.*/
+
+  memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
+
+  vec3 white(1,1,1);
+
+  for (int i = 0; i < stars.size(); i++) {
+    stars[i].x = (float(rand()) / float(RAND_MAX) - 0.5) * 2;
+    stars[i].y = (float(rand()) / float(RAND_MAX) - 0.5) * 2;
+    stars[i].z = float(rand()) / float(RAND_MAX);
+
+    float u = (SCREEN_WIDTH/2) * (stars[i].x/stars[i].z) + (SCREEN_WIDTH/2);
+    float v = (SCREEN_HEIGHT/2) * (stars[i].y/stars[i].z) + (SCREEN_HEIGHT/2);
+
+    PutPixelSDL(screen, u, v, white);
+  }
 
   while( NoQuitMessageSDL() ) {
     Draw(screen);
@@ -51,33 +67,37 @@ void Draw(screen* screen) {
   /* Clear buffer */
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
 
-  vec3 topLeft(1,0,0); //red
-  vec3 topRight(0,0,1); // blue
-  vec3 bottomRight(0,1,0); // green
-  vec3 bottomLeft(1,1,0); // yellow
+  vec3 white(1,1,1);
 
-  vector<vec3> leftSide( SCREEN_HEIGHT );
-  vector<vec3> rightSide( SCREEN_HEIGHT );
-  Interpolate( topLeft, bottomLeft, leftSide );
-  Interpolate( topRight, bottomRight, rightSide );
+  for (int i = 0; i < stars.size(); i++) {
+    float u = (SCREEN_WIDTH/2) * (stars[i].x/stars[i].z) + (SCREEN_WIDTH/2);
+    float v = (SCREEN_HEIGHT/2) * (stars[i].y/stars[i].z) + (SCREEN_HEIGHT/2);
 
-  // vec3 colour(1.0,0.0,0.0);
-  for(int y = 0; y < SCREEN_HEIGHT; y++) {
-    vector<vec3> row( SCREEN_WIDTH );
-    Interpolate(leftSide[y], rightSide[y], row);
-
-    for(int x = 0; x < SCREEN_WIDTH; x++) {
-      PutPixelSDL(screen, x, y, row[x]);
-    }
+    PutPixelSDL(screen, u, v, white);
   }
+
 }
 
 /*Place updates of parameters here*/
 void Update() {
   /* Compute frame time */
+  static int t = SDL_GetTicks();
   int t2 = SDL_GetTicks();
-  //float dt = float(t2-t);
+  float dt = float(t2-t);
   t = t2;
+
+  for( int i = 0; i < stars.size(); i++ ) {
+    // Add code for update of stars
+    if( stars[i].z <= 0 )
+        stars[i].z += 1;
+    if( stars[i].z > 1 )
+        stars[i].z -= 1;
+
+    stars[i].z = stars[i].z - (0.0005 * dt);
+
+  }
+
+
   /*Good idea to remove this*/
   // std::cout << "Render time: " << dt << " ms." << std::endl;
   /* Update variables*/
