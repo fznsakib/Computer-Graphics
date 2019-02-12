@@ -19,12 +19,11 @@ SDL_Event event;
 #define FULLSCREEN_MODE false
 
 
-
 /* ----------------------------------------------------------------------------*/
 /* VARIABLES                                                                   */
 /* ----------------------------------------------------------------------------*/
 
-float focalLength = 20;
+float focalLength = SCREEN_HEIGHT;
 
 /* ----------------------------------------------------------------------------*/
 /* STRUCTS                                                                   */
@@ -85,20 +84,22 @@ void Draw(screen* screen) {
   LoadTestModel( triangles );
   vec4 cameraPos( 0, 0, focalLength, 1.0);
 
-  for (size_t v = -SCREEN_HEIGHT/2; v < SCREEN_HEIGHT/2; v++) {
-    for (size_t u = -SCREEN_WIDTH/2; u < SCREEN_WIDTH/2; u++) {
+  for (int v = -SCREEN_HEIGHT/2; v < SCREEN_HEIGHT/2; v++) {
+    for (int u = -SCREEN_WIDTH/2; u < SCREEN_WIDTH/2; u++) {
       vec4 dir = vec4(u - (SCREEN_WIDTH/2), v - (SCREEN_HEIGHT/2), focalLength, 1.0);
 
       // vec4 normDir = 1/(sqrt(dir * dir)) * dir;
       Intersection closestIntersection;
 
+      // std::cout << "here" << '\n';
+
       if (ClosestIntersection(cameraPos, dir, triangles, closestIntersection) == true) {
         // std::cout << "Intersection found, distance = " + std::to_string(closestIntersection.distance) + "\n";
-        PutPixelSDL(screen, u, v, triangles[closestIntersection.triangleIndex].color);
+        PutPixelSDL(screen, u + SCREEN_WIDTH/2, v + SCREEN_HEIGHT/2, triangles[closestIntersection.triangleIndex].color);
       }
       else {
         // std::cout << "No intersection: paint black\n";
-        PutPixelSDL(screen, u, v, colour);
+        PutPixelSDL(screen, u + SCREEN_WIDTH/2, v + SCREEN_HEIGHT/2, colour);
       }
 
       // std::cout << std::to_string(x) + ", " + std::to_string(y) + " printed " << '\n';
@@ -154,6 +155,7 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
     // Don't check for intersection for large t
     float bound = std::numeric_limits<float>::max();
+    float minDist = INFINITY;
 
     closestIntersection.distance = bound;
 
@@ -185,19 +187,15 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       // std::cout << to_string(check1) + to_string(check2) + to_string(check3) + to_string(check4) + to_string(check5) + to_string(check6) << '\n';
       // Check against inequalities, if true intersection occurred
       if ( check1 && check2 && check3 && check4 && check5 && check6 ) {
-        closestIntersection.position = x4;
-        closestIntersection.distance = x[0];
-        closestIntersection.triangleIndex = i;
-        std::cout << "accept" << '\n';
-        return true;
+        if (closestIntersection.distance < minDist) {
+          closestIntersection.position = x4;
+          closestIntersection.distance = x[0];
+          closestIntersection.triangleIndex = i;
+          // std::cout << "accept" << '\n';
+        }
       }
-    // else {
-    //   return false;
-    // }
-      if ((i == triangles.size() - 1) && (closestIntersection.distance == bound)) {
-        std::cout << "reject" << '\n';
-        return false;
-      }
-      return false;
-  }
+    }
+
+    if (closestIntersection.distance != INFINITY) return true;
+    else return false;
 }
