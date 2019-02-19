@@ -5,6 +5,7 @@
 #include "TestModelH.h"
 #include <stdint.h>
 #include <limits.h>
+#include <math.h>
 
 using namespace std;
 using glm::vec3;
@@ -26,6 +27,7 @@ SDL_Event event;
 
 float focalLength = 128;
 vec4 cameraPos( 0, 0.0, -2.0, 1.0);
+float yaw = 0;
 
 /* ----------------------------------------------------------------------------*/
 /* STRUCTS                                                                   */
@@ -87,9 +89,9 @@ void Draw(screen* screen) {
 
   /*RESCALE THE IMAGE */
   for (int i = 0; i < triangles.size(); i++) {
-      triangles[i].v0 *= vec4(1, 1, 1, 1.0); 
-      triangles[i].v1 *= vec4(1, 1, 1, 1.0); 
-      triangles[i].v2 *= vec4(1, 1, 1, 1.0); 
+      triangles[i].v0 *= vec4(1, 1, 1, 1.0);
+      triangles[i].v1 *= vec4(1, 1, 1, 1.0);
+      triangles[i].v2 *= vec4(1, 1, 1, 1.0);
   }
 
   // u and v are coordinates on the 2D screen
@@ -101,14 +103,11 @@ void Draw(screen* screen) {
       Intersection closestIntersection;
 
       if (ClosestIntersection(cameraPos, dir, triangles, closestIntersection) == true) {
-        //std::cout << "Intersection found, distance = " + std::to_string(closestIntersection.distance) + "\n";
         PutPixelSDL(screen, u, v, triangles[closestIntersection.triangleIndex].color);
       }
       else {
         PutPixelSDL(screen, u, v, colour);
       }
-
-      // std::cout << std::to_string(x) + ", " + std::to_string(y) + " printed " << '\n';
     }
   }
 }
@@ -152,9 +151,17 @@ bool Update() {
 		        cameraPos += vec4(-0.5, 0, 0, 0);
             cout << "KEYPRESS." <<endl;
 		      break;
+          // case SDLK_a:
+          //   yaw -=10;
+          //   vec4 right(cos(yaw), 0, -sin(yaw), 1);
+          //   vec4 down(0, 1, 0, 1);
+          //   vec4 forward(sin(yaw), 0, cos(yaw), 1);
+          // break;
+          // case SDLK_d:
+          //   yaw +=10;
+          // break;
 	        case SDLK_ESCAPE:
-		      /* Move camera quit */
-		      return false;
+            return false;
 	      }
 	    }
     }
@@ -208,9 +215,8 @@ bool ClosestIntersection( vec4 start, vec4 dir,
         return true;
     }
 
-    else 
+    else
     {
       return false;
     }
   }
-
