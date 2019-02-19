@@ -168,6 +168,10 @@ bool Update() {
   return true;
 }
 
+mat4 calculateRotation( float yaw ) {
+
+}
+
 bool ClosestIntersection( vec4 start, vec4 dir,
                           const vector<Triangle>& triangles,
                           Intersection& closestIntersection ) {
@@ -197,9 +201,9 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
       vec4 x4 = vec4(x[0], x[1], x[2], 1.0);
 
-      bool check1 = x[1] > 0;
-      bool check2 = x[2] > 0;
-      bool check3 = (x[1] + x[2]) < 1;
+      bool check1 = x[1] >= 0;
+      bool check2 = x[2] >= 0;
+      bool check3 = (x[1] + x[2]) <= 1;
       bool check4 = x[0] >= 0;
       bool check5 = x[0] < bound;
       bool check6 = x[0] < closestIntersection.distance;
