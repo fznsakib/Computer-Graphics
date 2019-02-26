@@ -19,8 +19,6 @@ SDL_Event event;
 #define SCREEN_HEIGHT 256
 #define FULLSCREEN_MODE false
 
-
-
 /* ----------------------------------------------------------------------------*/
 /* VARIABLES                                                                   */
 /* ----------------------------------------------------------------------------*/
@@ -40,6 +38,11 @@ struct Intersection {
        int triangleIndex;
 };
 
+struct Light {
+      vec4 position;
+      vec3 colour;
+};
+
 /* ----------------------------------------------------------------------------*/
 /* FUNCTIONS                                                                   */
 /* ----------------------------------------------------------------------------*/
@@ -52,12 +55,13 @@ bool ClosestIntersection(
        vec4 dir,
        const vector<Triangle>& triangles,
        Intersection& closestIntersection );
+vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Light light );
+
 
 int main( int argc, char* argv[] )
 {
 
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
-
 
   while ( Update())
     {
@@ -77,35 +81,37 @@ void Draw(screen* screen) {
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
 
   vec3 colour(0.0,0.0,0.0);
-  // for(int i=0; i<1000; i++)
-  //   {
-  //     uint32_t x = rand() % screen->width;
-  //     uint32_t y = rand() % screen->height;
-  //     PutPixelSDL(screen, x, y, colour);
-  //   }
 
-  // Raytrace begin
+  // Initialise triangles
   vector<Triangle> triangles;
   LoadTestModel( triangles );
 
-  // /*RESCALE THE IMAGE */
-  // for (int i = 0; i < triangles.size(); i++) {
-  //     triangles[i].v0 *= vec4(1, 1, 1, 1.0);
-  //     triangles[i].v1 *= vec4(1, 1, 1, 1.0);
-  //     triangles[i].v2 *= vec4(1, 1, 1, 1.0);
-  // }
+  // Initialise lights
+  vector<Light> lights;
+  Light light1;
+  light1.position = vec4( 0.0, -0.5, -0.7, 1.0 );
+  light1.colour = vec3( 14.f * vec3( 1, 1, 1 ));
+  lights.push_back(light1);
 
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {
     for (int u = 0; u < SCREEN_WIDTH; u++) {
+
       vec4 dir = (vec4((u - SCREEN_WIDTH/2), v - SCREEN_HEIGHT/2, focalLength, 1.0));
       /* CALCULATE THE NEW DIRECTION VECTOR AFTER YAW ROTATION */
       dir = R * dir;
-      // vec4 normDir = 1/(sqrt(dir * dir)) * dir;
-      Intersection closestIntersection;
 
-      if (ClosestIntersection(cameraPos, dir, triangles, closestIntersection) == true) {
-        PutPixelSDL(screen, u, v, triangles[closestIntersection.triangleIndex].color);
+      Intersection intersection;
+      bool closestIntersection = ClosestIntersection(cameraPos, dir, triangles, intersection);
+
+      if (closestIntersection == true) {
+        // PutPixelSDL(screen, u, v, triangles[intersection.triangleIndex].color);
+
+        vec3 pixelColour = vec3( 1.0, 1.0, 1.0 );
+        for (int i = 0; i < lights.size(); i++) {
+          pixelColour = DirectLight( intersection, triangles, lights[i] );
+        }
+        PutPixelSDL(screen, u, v, pixelColour);
       }
       else {
         PutPixelSDL(screen, u, v, colour);
@@ -192,9 +198,30 @@ bool Update() {
   return true;
 }
 
-mat4 calculateRotation( float yaw ) {
 
+vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Light light ) {
+
+  vec3 power;
+  Triangle triangle = triangles[i.triangleIndex];
+  vec4 r = sqrt((light.position - i.position) * (light.position - i.position));
+
+  vec4 direction = light.position - i.position;
+  direction = glm::normalize(direction);
+
+  float a = glm::dot(direction, triangle.normal);
+  float b = 4 * M_PI;
+
+  vec3 surfaceArea = vec3(b * (r * r));
+
+  // If light does not hit triangle
+  if (a < 0) a = 0;
+
+  power = (light.colour * a)/surfaceArea;
+
+  return power;
 }
+
+
 
 bool ClosestIntersection( vec4 start, vec4 dir,
                           const vector<Triangle>& triangles,
