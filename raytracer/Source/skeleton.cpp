@@ -26,8 +26,9 @@ SDL_Event event;
 /* ----------------------------------------------------------------------------*/
 
 float focalLength = 128;
-vec4 cameraPos( 0, 0.0, -2.0, 1.0);
-float yaw = 0;
+vec4 cameraPos( 0.0, 0.0, -2.0, 1.0);
+float yaw = 0.0;
+mat4 R(1.0f);
 
 /* ----------------------------------------------------------------------------*/
 /* STRUCTS                                                                   */
@@ -87,18 +88,19 @@ void Draw(screen* screen) {
   vector<Triangle> triangles;
   LoadTestModel( triangles );
 
-  /*RESCALE THE IMAGE */
-  for (int i = 0; i < triangles.size(); i++) {
-      triangles[i].v0 *= vec4(1, 1, 1, 1.0);
-      triangles[i].v1 *= vec4(1, 1, 1, 1.0);
-      triangles[i].v2 *= vec4(1, 1, 1, 1.0);
-  }
+  // /*RESCALE THE IMAGE */
+  // for (int i = 0; i < triangles.size(); i++) {
+  //     triangles[i].v0 *= vec4(1, 1, 1, 1.0);
+  //     triangles[i].v1 *= vec4(1, 1, 1, 1.0);
+  //     triangles[i].v2 *= vec4(1, 1, 1, 1.0);
+  // }
 
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {
     for (int u = 0; u < SCREEN_WIDTH; u++) {
-      vec4 dir = vec4(u - SCREEN_WIDTH/2, v - SCREEN_HEIGHT/2, focalLength, 1.0);
-
+      vec4 dir = (vec4((u - SCREEN_WIDTH/2), v - SCREEN_HEIGHT/2, focalLength, 1.0));
+      /* CALCULATE THE NEW DIRECTION VECTOR AFTER YAW ROTATION */
+      dir = R * dir;
       // vec4 normDir = 1/(sqrt(dir * dir)) * dir;
       Intersection closestIntersection;
 
@@ -121,7 +123,7 @@ bool Update() {
   t = t2;
 
   cout << "Render time : " << dt << " ms." <<endl;
-  cout << to_string(cameraPos[0]) + " " + to_string(cameraPos[1]) + " " + to_string(cameraPos[2]) + " " << endl;
+  cout << "X : " + to_string(cameraPos[0]) + " Y : " + to_string(cameraPos[1]) + " Z : " + to_string(cameraPos[2]) + " Yaw : " + to_string(yaw) << endl;
 
   SDL_Event e;
   while(SDL_PollEvent(&e))
@@ -137,29 +139,51 @@ bool Update() {
 	      {
 	        case SDLK_UP:
 		        cameraPos += vec4(0, 0, 0.5, 0);
-            cout << "KEYPRESS." <<endl;
+            cout << "KEYPRESS UP." <<endl;
 		      break;
 	        case SDLK_DOWN:
 		        cameraPos += vec4(0, 0, -0.5, 0);
-            cout << "KEYPRESS." <<endl;
+            cout << "KEYPRESS DOWN." <<endl;
 		      break;
 	        case SDLK_LEFT:
-		        cameraPos += vec4(0.5, 0, 0, 0);
-            cout << "KEYPRESS." <<endl;
+		        cameraPos += vec4(-0.5, 0, 0, 0);
+            cout << "KEYPRESS <-." <<endl;
 		      break;
 	        case SDLK_RIGHT:
-		        cameraPos += vec4(-0.5, 0, 0, 0);
-            cout << "KEYPRESS." <<endl;
+		        cameraPos += vec4(0.5, 0, 0, 0);
+            cout << "KEYPRESS ->." <<endl;
 		      break;
-          // case SDLK_a:
-          //   yaw -=10;
-          //   vec4 right(cos(yaw), 0, -sin(yaw), 1);
-          //   vec4 down(0, 1, 0, 1);
-          //   vec4 forward(sin(yaw), 0, cos(yaw), 1);
-          // break;
-          // case SDLK_d:
-          //   yaw +=10;
-          // break;
+          case SDLK_a:
+            cout << "KEYPRESS a." <<endl;
+            yaw -= 0.174533;
+            R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
+            R[1][0] = 0;          R[1][1] = 1;   R[1][2] = 0;
+            R[2][0] = sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
+          break;
+
+            /* POTENTIALLY NOT NEEDED ANYMORE */
+            // rightAxis   = normalize(vec4(R[0][0], R[0][1], R[0][2], 1);
+            // downAxis    = normalize(vec4(R[1][0], R[1][1], R[1][2], 1);
+            // forwardAxis = normalize(vec4(R[2][0], R[2][1], R[2][2], 1);
+            // vec4 right(cos(yaw), 0, -sin(yaw), 1);
+            // vec4 down(0, 1, 0, 1);
+            // vec4 forward(sin(yaw), 0, cos(yaw), 1);
+
+          case SDLK_d:
+            yaw += 0.174533;
+            R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
+            R[1][0] = 0;          R[1][1] = 1;   R[1][2] = 0;
+            R[2][0] = sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
+          break;
+
+          case SDLK_i:
+            focalLength += 10;
+          break;
+
+          case SDLK_o:
+            focalLength -= 10;
+          break;
+
 	        case SDLK_ESCAPE:
             return false;
 	      }
