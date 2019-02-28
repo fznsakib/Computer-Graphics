@@ -223,6 +223,17 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Ligh
 
   vec4 direction = light.position - i.position;
 
+  // Check for surface between triangle and light
+  Intersection intersection;
+
+  vec3 triNormal = vec3(triangle.normal);
+  // Check if distance less than to light
+  if (ClosestIntersection(i.position + (triangle.normal * 0.00001f), direction, triangles, intersection)) {
+    if (intersection.distance < r_magnitude) {
+      return vec3(0.0,0.0,0.0);
+    }
+  }
+
   vec3 normalisedDirection = glm::normalize(vec3(direction));
   vec3 normal = vec3(triangle.normal);
 
@@ -236,12 +247,8 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Ligh
 
   power = (triangle.color * light.colour * a)/surfaceArea;
 
-  //a = dot(direction, triangle.normal)
-  //surfaceArea = 4PI^2
-
   return power;
 }
-
 
 
 bool ClosestIntersection( vec4 start, vec4 dir,
@@ -271,24 +278,27 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
       vec3 x = glm::inverse( A ) * b;
 
+      // Convert vec3 to vec4
       vec4 e1v2 = vec4(e1, 1.0);
       vec4 e2v2 = vec4(e2, 1.0);
 
       vec4 ue1 = x[1] * e1v2;
       vec4 ve2 = x[2] * e2v2;
 
-      vec4 position = v0 + ue1 + ve2;
+      // vec4 position = v0 + ue1 + ve2;
+      vec4 position = start + vec4(x[0] * dir3, 0);
+      float distance = x[0] * glm::length(dir3);
 
       bool check1 = x[1] >= 0;
       bool check2 = x[2] >= 0;
       bool check3 = (x[1] + x[2]) <= 1;
       bool check4 = x[0] >= 0;
-      bool check5 = x[0] < bound;
-      bool check6 = x[0] < closestIntersection.distance;
+      bool check5 = distance < bound;
+      bool check6 = distance < closestIntersection.distance;
 
       if ( check1 && check2 && check3 && check4 && check5 && check6 ) {
         closestIntersection.position = position;
-        closestIntersection.distance = x[0];
+        closestIntersection.distance = distance;
         closestIntersection.triangleIndex = i;
       }
     }
