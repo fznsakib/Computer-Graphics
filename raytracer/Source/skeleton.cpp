@@ -20,15 +20,6 @@ SDL_Event event;
 #define FULLSCREEN_MODE false
 
 /* ----------------------------------------------------------------------------*/
-/* VARIABLES                                                                   */
-/* ----------------------------------------------------------------------------*/
-
-float focalLength = 128;
-vec4 cameraPos( 0.0, 0.0, -2.0, 1.0);
-float yaw = 0.0;
-mat4 R(1.0f);
-
-/* ----------------------------------------------------------------------------*/
 /* STRUCTS                                                                   */
 /* ----------------------------------------------------------------------------*/
 
@@ -42,6 +33,17 @@ struct Light {
       vec4 position;
       vec3 colour;
 };
+
+/* ----------------------------------------------------------------------------*/
+/* VARIABLES                                                                   */
+/* ----------------------------------------------------------------------------*/
+
+float focalLength = 256;
+vec4 cameraPos( 0.0, 0.0, -3.0, 1.0);
+vector<Light> lights;
+float yaw = 0.0;
+mat4 R(1.0f);
+
 
 /* ----------------------------------------------------------------------------*/
 /* FUNCTIONS                                                                   */
@@ -62,6 +64,12 @@ int main( int argc, char* argv[] )
 {
 
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
+
+  // Initialise lights
+  Light light1;
+  light1.position = vec4( 0, -0.5, -0.7, 1.0 );
+  light1.colour = vec3( 14.f * vec3( 1, 1, 1 ));
+  lights.push_back(light1);
 
   while ( Update())
     {
@@ -86,12 +94,6 @@ void Draw(screen* screen) {
   vector<Triangle> triangles;
   LoadTestModel( triangles );
 
-  // Initialise lights
-  vector<Light> lights;
-  Light light1;
-  light1.position = vec4( 0.0, -0.5, -0.7, 1.0 );
-  light1.colour = vec3( 14.f * vec3( 1, 1, 1 ));
-  lights.push_back(light1);
 
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {
@@ -143,6 +145,28 @@ bool Update() {
 	      int key_code = e.key.keysym.sym;
 	      switch(key_code)
 	      {
+          // LIGHT MOVEMENT
+          case SDLK_w:
+            lights[0].position += vec4(0, 0, 0.5, 0);
+          break;
+          case SDLK_s:
+            lights[0].position += vec4(0, 0, -0.5, 0);
+          break;
+          case SDLK_a:
+            lights[0].position += vec4(-0.5, 0, 0, 0);
+          break;
+          case SDLK_d:
+            lights[0].position += vec4(0.5, 0, 0, 0);
+            // std::cout << lights[0].position[0] << '\n';
+          break;
+          case SDLK_q:
+            lights[0].position += vec4(0, -0.5, 0, 0);
+          break;
+          case SDLK_e:
+            lights[0].position += vec4(0, 0.5, 0, 0);
+          break;
+
+          // CAMERA MOVEMENT
 	        case SDLK_UP:
 		        cameraPos += vec4(0, 0, 0.5, 0);
             cout << "KEYPRESS UP." <<endl;
@@ -159,33 +183,24 @@ bool Update() {
 		        cameraPos += vec4(0.5, 0, 0, 0);
             cout << "KEYPRESS ->." <<endl;
 		      break;
-          case SDLK_a:
+          // CAMERA ROTATION
+          case SDLK_n:
             cout << "KEYPRESS a." <<endl;
             yaw -= 0.174533;
             R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
             R[1][0] = 0;          R[1][1] = 1;   R[1][2] = 0;
             R[2][0] = sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
           break;
-
-            /* POTENTIALLY NOT NEEDED ANYMORE */
-            // rightAxis   = normalize(vec4(R[0][0], R[0][1], R[0][2], 1);
-            // downAxis    = normalize(vec4(R[1][0], R[1][1], R[1][2], 1);
-            // forwardAxis = normalize(vec4(R[2][0], R[2][1], R[2][2], 1);
-            // vec4 right(cos(yaw), 0, -sin(yaw), 1);
-            // vec4 down(0, 1, 0, 1);
-            // vec4 forward(sin(yaw), 0, cos(yaw), 1);
-
-          case SDLK_d:
+          case SDLK_m:
             yaw += 0.174533;
             R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
             R[1][0] = 0;          R[1][1] = 1;   R[1][2] = 0;
             R[2][0] = sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
           break;
-
+          // FOCAL LENGTH CHANGE
           case SDLK_i:
             focalLength += 10;
           break;
-
           case SDLK_o:
             focalLength -= 10;
           break;
@@ -203,20 +218,27 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Ligh
 
   vec3 power;
   Triangle triangle = triangles[i.triangleIndex];
-  vec4 r = sqrt((light.position - i.position) * (light.position - i.position));
+  vec4 r = (light.position - i.position);
+  float r_magnitude = sqrt(pow(r[0],2) + pow(r[1],2) + pow(r[2],2));
 
   vec4 direction = light.position - i.position;
   direction = glm::normalize(direction);
 
-  float a = glm::dot(direction, triangle.normal);
+  vec3 direction2 = glm::normalize(vec3(direction));
+  vec3 normal = glm::normalize(vec3(triangle.normal));
+
+  float a = glm::dot(direction2, normal);
   float b = 4 * M_PI;
 
-  vec3 surfaceArea = vec3(b * (r * r));
+  float surfaceArea = (b * pow(r_magnitude,2));
 
   // If light does not hit triangle
-  if (a < 0) a = 0;
+  if (a <= 0) a = 0.f;
 
   power = (light.colour * a)/surfaceArea;
+
+  //a = dot(direction, triangle.normal)
+  //surfaceArea = 4PI^2
 
   return power;
 }
@@ -252,6 +274,14 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
       vec4 x4 = vec4(x[0], x[1], x[2], 1.0);
 
+      vec4 e1v2 = vec4(e1, 1.0);
+      vec4 e2v2 = vec4(e2, 1.0);
+
+      vec4 ue1 = x[1] * e1v2;
+      vec4 ve2 = x[2] * e2v2;
+
+      vec4 position = v0 + ue1 + ve2;
+
       bool check1 = x[1] >= 0;
       bool check2 = x[2] >= 0;
       bool check3 = (x[1] + x[2]) <= 1;
@@ -260,7 +290,7 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       bool check6 = x[0] < closestIntersection.distance;
 
       if ( check1 && check2 && check3 && check4 && check5 && check6 ) {
-        closestIntersection.position = x4;
+        closestIntersection.position = position;
         closestIntersection.distance = x[0];
         closestIntersection.triangleIndex = i;
       }
