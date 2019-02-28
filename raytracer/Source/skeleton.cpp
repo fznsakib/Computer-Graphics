@@ -222,12 +222,11 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Ligh
   float r_magnitude = sqrt(pow(r[0],2) + pow(r[1],2) + pow(r[2],2));
 
   vec4 direction = light.position - i.position;
-  direction = glm::normalize(direction);
 
-  vec3 direction2 = glm::normalize(vec3(direction));
-  vec3 normal = glm::normalize(vec3(triangle.normal));
+  vec3 normalisedDirection = glm::normalize(vec3(direction));
+  vec3 normal = vec3(triangle.normal);
 
-  float a = glm::dot(direction2, normal);
+  float a = glm::dot(normalisedDirection, normal);
   float b = 4 * M_PI;
 
   float surfaceArea = (b * pow(r_magnitude,2));
@@ -235,7 +234,7 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Ligh
   // If light does not hit triangle
   if (a <= 0) a = 0.f;
 
-  power = (light.colour * a)/surfaceArea;
+  power = (triangle.color * light.colour * a)/surfaceArea;
 
   //a = dot(direction, triangle.normal)
   //surfaceArea = 4PI^2
@@ -271,8 +270,6 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       glm::mat3 A( -dir3, e1, e2 );
 
       vec3 x = glm::inverse( A ) * b;
-
-      vec4 x4 = vec4(x[0], x[1], x[2], 1.0);
 
       vec4 e1v2 = vec4(e1, 1.0);
       vec4 e2v2 = vec4(e2, 1.0);
