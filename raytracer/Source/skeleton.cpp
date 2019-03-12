@@ -88,35 +88,38 @@ void Draw(screen* screen) {
   /* Clear buffer */
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
 
-  vec3 colour(0.0,0.0,0.0);
+  vec3 black(0.0,0.0,0.0);
+  vec3 pixelColour = vec3( 1.0, 1.0, 1.0 );
+  vec3 indirectLight = 0.5f * vec3(1, 1, 1);
 
   // Initialise triangles
   vector<Triangle> triangles;
   LoadTestModel( triangles );
-
 
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {
     for (int u = 0; u < SCREEN_WIDTH; u++) {
 
       vec4 dir = (vec4((u - SCREEN_WIDTH/2), v - SCREEN_HEIGHT/2, focalLength, 1.0));
-      /* CALCULATE THE NEW DIRECTION VECTOR AFTER YAW ROTATION */
+      /* Calculate the new direction vector after yaw rotation */
       dir = R * dir;
 
       Intersection intersection;
       bool closestIntersection = ClosestIntersection(cameraPos, dir, triangles, intersection);
 
+      // If light intersects with triangle then draw it
       if (closestIntersection == true) {
-        // PutPixelSDL(screen, u, v, triangles[intersection.triangleIndex].color);
 
-        vec3 pixelColour = vec3( 1.0, 1.0, 1.0 );
         for (int i = 0; i < lights.size(); i++) {
           pixelColour = DirectLight( intersection, triangles, lights[i] );
         }
+
+        // Take into account indirect illumination
+        pixelColour = pixelColour + (triangles[intersection.triangleIndex].color * indirectLight);
         PutPixelSDL(screen, u, v, pixelColour);
       }
       else {
-        PutPixelSDL(screen, u, v, colour);
+        PutPixelSDL(screen, u, v, black);
       }
     }
   }
@@ -147,40 +150,40 @@ bool Update() {
 	      {
           // LIGHT MOVEMENT
           case SDLK_w:
-            lights[0].position += vec4(0, 0, 0.5, 0);
+            lights[0].position += vec4(0, 0, 0.1, 0);
           break;
           case SDLK_s:
-            lights[0].position += vec4(0, 0, -0.5, 0);
+            lights[0].position += vec4(0, 0, -0.1, 0);
           break;
           case SDLK_a:
-            lights[0].position += vec4(-0.5, 0, 0, 0);
+            lights[0].position += vec4(-0.1, 0, 0, 0);
           break;
           case SDLK_d:
-            lights[0].position += vec4(0.5, 0, 0, 0);
+            lights[0].position += vec4(0.1, 0, 0, 0);
             // std::cout << lights[0].position[0] << '\n';
           break;
           case SDLK_q:
-            lights[0].position += vec4(0, -0.5, 0, 0);
+            lights[0].position += vec4(0, -0.1, 0, 0);
           break;
           case SDLK_e:
-            lights[0].position += vec4(0, 0.5, 0, 0);
+            lights[0].position += vec4(0, 0.1, 0, 0);
           break;
 
           // CAMERA MOVEMENT
 	        case SDLK_UP:
-		        cameraPos += vec4(0, 0, 0.5, 0);
+		        cameraPos += vec4(0, 0, 0.1, 0);
             cout << "KEYPRESS UP." <<endl;
 		      break;
 	        case SDLK_DOWN:
-		        cameraPos += vec4(0, 0, -0.5, 0);
+		        cameraPos += vec4(0, 0, -0.1, 0);
             cout << "KEYPRESS DOWN." <<endl;
 		      break;
 	        case SDLK_LEFT:
-		        cameraPos += vec4(-0.5, 0, 0, 0);
+		        cameraPos += vec4(-0.1, 0, 0, 0);
             cout << "KEYPRESS <-." <<endl;
 		      break;
 	        case SDLK_RIGHT:
-		        cameraPos += vec4(0.5, 0, 0, 0);
+		        cameraPos += vec4(0.1, 0, 0, 0);
             cout << "KEYPRESS ->." <<endl;
 		      break;
           // CAMERA ROTATION
@@ -226,8 +229,8 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Ligh
   // Check for surface between triangle and light
   Intersection intersection;
 
-  vec3 triNormal = vec3(triangle.normal);
-  // Check if distance less than to light
+  // Check if distance less than to light. Emit ray from a small distance off the surface
+  // so that it doesn't intersect with itself
   if (ClosestIntersection(i.position + (triangle.normal * 0.00001f), direction, triangles, intersection)) {
     if (intersection.distance < r_magnitude) {
       return vec3(0.0,0.0,0.0);
@@ -245,6 +248,7 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Ligh
   // If light does not hit triangle
   if (a <= 0) a = 0.f;
 
+  // Return power of direct illumination
   power = (triangle.color * light.colour * a)/surfaceArea;
 
   return power;
@@ -281,9 +285,6 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       // Convert vec3 to vec4
       vec4 e1v2 = vec4(e1, 1.0);
       vec4 e2v2 = vec4(e2, 1.0);
-
-      vec4 ue1 = x[1] * e1v2;
-      vec4 ve2 = x[2] * e2v2;
 
       // vec4 position = v0 + ue1 + ve2;
       vec4 position = start + vec4(x[0] * dir3, 0);
