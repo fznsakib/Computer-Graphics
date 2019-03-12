@@ -273,8 +273,6 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       vec3 e2 = vec3(v2.x - v0.x ,v2.y - v0.y,v2.z - v0.z);
       vec3 b = vec3(start.x-v0.x, start.y-v0.y, start.z-v0.z);
 
-      //std::cout << to_string(b[0]) + " " + to_string(b[1]) + " " + to_string(b[2]) << '\n';
-
       // bottleneck
       // glm::mat3 A;
       vec3 dir3 = vec3(dir[0], dir[1], dir[2]);
