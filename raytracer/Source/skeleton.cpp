@@ -282,10 +282,6 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
       vec3 x = glm::inverse( A ) * b;
 
-      // Convert vec3 to vec4
-      vec4 e1v2 = vec4(e1, 1.0);
-      vec4 e2v2 = vec4(e2, 1.0);
-
       // vec4 position = v0 + ue1 + ve2;
       vec4 position = start + vec4(x[0] * dir3, 0);
       float distance = x[0] * glm::length(dir3);
