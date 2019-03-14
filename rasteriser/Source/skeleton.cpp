@@ -35,6 +35,8 @@ vec4 cameraPos( 0, 0, -3.001, 1 );
 bool Update();
 void Draw(screen* screen);
 void VertexShader( const vec4& v, glm::ivec2& p );
+void Interpolate( glm::ivec2 a, glm::ivec2 b, vector<glm::ivec2>& result );
+void DrawLineSDL( screen* screen, vector<glm::ivec2> line, vec3 color );
 
 int main( int argc, char* argv[] )
 {
@@ -58,21 +60,49 @@ void Draw(screen* screen)
 {
   vector<Triangle> triangles;
   LoadTestModel( triangles );
+  std::vector<glm::ivec2> points;
 
   /* Clear buffer */
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
+
+  // Go through all triangles
   for( uint32_t i=0; i<triangles.size(); ++i ) {
+
+     points.clear();
      vector<vec4> vertices(3);
 
      vertices[0] = triangles[i].v0;
      vertices[1] = triangles[i].v1;
      vertices[2] = triangles[i].v2;
 
-     for(int v=0; v<3; ++v) {
+     // Draw vertices
+    for(int v=0; v<3; ++v) {
        glm::ivec2 projPos;
        VertexShader( vertices[v], projPos );
        vec3 color(1,1,1);
        PutPixelSDL( screen, projPos.x, projPos.y, color );
+
+       points.push_back(projPos);
+    }
+
+    glm::ivec2 a;
+    glm::ivec2 b;
+    // Get edges between vertices
+    for(int i = 0; i < 3; i++) {
+      a = points[i];
+      if (i == 2) b = points[0];
+      else b = points[i + 1];
+
+      // Calculate number of pixels to draw in interpolation
+      glm::ivec2 delta = glm::abs( a - b );
+      int pixels = glm::max( delta.x, delta.y ) + 1;
+
+      // Populate vector with pixels to be drawn
+      vector<glm::ivec2> line( pixels );
+      Interpolate( a, b, line );
+
+      // Draw all pixels within line
+      DrawLineSDL(screen, line, vec3(1,1,1));
     }
   }
 }
@@ -135,5 +165,22 @@ void VertexShader( const vec4& v, glm::ivec2& p ) {
   p[0] = x2D;
   p[1] = y2D;
 
-  std::cout << x2D << " and " << y2D << '\n';
+  // std::cout << x2D << " and " << y2D << '\n';
+}
+
+void Interpolate( glm::ivec2 a, glm::ivec2 b, vector<glm::ivec2>& result ) {
+  int N = result.size();
+  glm::vec2 step = glm::vec2(b-a) / float(max(N-1,1));
+  glm::vec2 current( a );
+
+  for( int i=0; i<N; ++i ) {
+     result[i] = round(current);
+     current += step;
+  }
+}
+
+void DrawLineSDL( screen* screen, vector<glm::ivec2> line, vec3 color ) {
+    for(int i = 0; i < line.size(); i++) {
+      PutPixelSDL(screen, line[i].x, line[i].y, color);
+    }
 }
