@@ -279,8 +279,14 @@ void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftP
 
 void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vector<Pixel>& rightPixels ) {
   for (int i = 0; i < leftPixels.size(); ++i) {
+    vector<Pixel> currentLine(rightPixels[i].x - leftPixels[i].x + 1);
+    Interpolate(leftPixels[i], rightPixels[i], currentLine);
     for (int j = leftPixels[i].x; j < rightPixels[i].x; ++j) {
-      PutPixelSDL(screen, j, leftPixels[i].y, currentColor);
+      if (currentLine[j-leftPixels[i].x].zinv > depthBuffer[leftPixels[0].y + i][j]) {
+        PutPixelSDL(screen, j, leftPixels[i].y, currentColor);
+        /* Implement clipping to stop crashes */
+        depthBuffer[leftPixels[0].y + i][j] = currentLine[j-leftPixels[i].x].zinv;
+      }
     }
   }
 }
