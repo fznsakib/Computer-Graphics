@@ -36,6 +36,13 @@ struct Pixel
   float zinv;
 };
 
+struct Vertex
+{
+  vec4 position;
+  vec4 normal;
+  glm::vec2 reflectance;
+};
+
 /* ----------------------------------------------------------------------------*/
 /* FUNCTIONS                                                                   */
 /* ----------------------------------------------------------------------------*/
@@ -45,9 +52,10 @@ void Draw(screen* screen);
 void VertexShader( const vec4& v, Pixel& p );
 void Interpolate( Pixel a, Pixel b, vector<Pixel>& result );
 void DrawLineSDL( screen* screen, vector<glm::ivec2> line, vec3 color );
-void DrawPolygon( screen* screen, const vector<vec4>& vertices);
+void DrawPolygon( screen* screen, const vector<Vertex>& vertices);
 void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftPixels, vector<Pixel>& rightPixels);
 void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vector<Pixel>& rightPixels );
+void PixelShader( const Pixel& p, screen* screen );
 
 
 int main( int argc, char* argv[] )
@@ -107,11 +115,11 @@ void Draw(screen* screen)
   for( uint32_t i=0; i<triangles.size(); ++i ) {
 
      //points.clear();
-     vector<vec4> vertices(3);
+     vector<Vertex> vertices(3);
 
-     vertices[0] = triangles[i].v0;
-     vertices[1] = triangles[i].v1;
-     vertices[2] = triangles[i].v2;
+     vertices[0].position = triangles[i].v0;
+     vertices[1].position = triangles[i].v1;
+     vertices[2].position = triangles[i].v2;
 
      // Set current colour to the colour of the triangle.
      currentColor = triangles[i].color;
@@ -200,12 +208,12 @@ bool Update()
 }
 
 /*----------------- ADDED FUNCTION TO SHADE IN POLYGONS --------------------- */
-void DrawPolygon(screen* screen, const vector<vec4>& vertices) {
+void DrawPolygon(screen* screen, const vector<Vertex>& vertices) {
   int V = vertices.size();
 
   vector<Pixel> vertexPixels(V);
   for (int i=0; i<V; ++i) {
-    VertexShader( vertices[i], vertexPixels[i] );
+    VertexShader( vertices[i].position, vertexPixels[i] );
   }
   vector<Pixel> leftPixels;
   vector<Pixel> rightPixels;
@@ -278,15 +286,11 @@ void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftP
 }
 
 void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vector<Pixel>& rightPixels ) {
-  for (int i = 0; i < leftPixels.size(); ++i) {
-    vector<Pixel> currentLine(rightPixels[i].x - leftPixels[i].x + 1);
-    Interpolate(leftPixels[i], rightPixels[i], currentLine);
-    for (int j = leftPixels[i].x; j < rightPixels[i].x; ++j) {
-      if (currentLine[j-leftPixels[i].x].zinv > depthBuffer[leftPixels[0].y + i][j]) {
-        PutPixelSDL(screen, j, leftPixels[i].y, currentColor);
-        /* Implement clipping to stop crashes */
-        depthBuffer[leftPixels[0].y + i][j] = currentLine[j-leftPixels[i].x].zinv;
-      }
+  for (int y = 0; y < leftPixels.size(); ++y) {
+    vector<Pixel> currentLine(rightPixels[y].x - leftPixels[y].x + 1);
+    Interpolate(leftPixels[y], rightPixels[y], currentLine);
+    for (int x = 0; x < (rightPixels[y].x - leftPixels[y].x); ++x) {
+      PixelShader(currentLine[x], screen );
     }
   }
 }
@@ -328,4 +332,13 @@ void DrawLineSDL( screen* screen, vector<glm::ivec2> line, vec3 color ) {
     for(int i = 0; i < line.size(); i++) {
       PutPixelSDL(screen, line[i].x, line[i].y, color);
     }
+}
+
+void PixelShader( const Pixel& p, screen* screen ) {
+  int x = p.x;
+  int y = p.y;
+  if (p.zinv > depthBuffer[y][x]) {
+    depthBuffer[y][x] = p.zinv;
+    PutPixelSDL( screen, x, y, currentColor );
+  }
 }
