@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 #include <glm/glm.hpp>
 #include <SDL.h>
 #include "SDLauxiliary.h"
@@ -29,18 +30,26 @@ vec4 cameraPos( 0, 0, -3.001, 1 );
 vec3 currentColor;
 float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH]; // Stores depth information of screen pixels. This
                                                 // is stored as 1/z.
+
+// Initialise light variables
+vec4 lightPos(0,-0.5,-0.7, 1);
+vec3 lightPower = 11.0f*vec3( 1, 1, 1 );
+vec3 indirectLightPowerPerArea = 0.5f*vec3( 1, 1, 1 );
+
+
 struct Pixel
 {
   int x;
   int y;
   float zinv;
+  vec3 illumination;
 };
 
 struct Vertex
 {
   vec4 position;
   vec4 normal;
-  glm::vec2 reflectance;
+  glm::vec3 reflectance;
 };
 
 /* ----------------------------------------------------------------------------*/
@@ -49,7 +58,7 @@ struct Vertex
 
 bool Update();
 void Draw(screen* screen);
-void VertexShader( const vec4& v, Pixel& p );
+void VertexShader( const Vertex& v, Pixel& p );
 void Interpolate( Pixel a, Pixel b, vector<Pixel>& result );
 void DrawLineSDL( screen* screen, vector<glm::ivec2> line, vec3 color );
 void DrawPolygon( screen* screen, const vector<Vertex>& vertices);
@@ -118,44 +127,17 @@ void Draw(screen* screen)
      vector<Vertex> vertices(3);
 
      vertices[0].position = triangles[i].v0;
+     vertices[0].normal = triangles[i].normal;
      vertices[1].position = triangles[i].v1;
+     vertices[1].normal = triangles[i].normal;
      vertices[2].position = triangles[i].v2;
+     vertices[2].normal = triangles[i].normal;
 
      // Set current colour to the colour of the triangle.
      currentColor = triangles[i].color;
 
      // Draw and colour the triangles.
      DrawPolygon( screen, vertices );
-
-    //  // Draw vertices
-    // for(int v=0; v<3; ++v) {
-    //    glm::ivec2 projPos;
-    //    VertexShader( vertices[v], projPos );
-    //    vec3 color(1,1,1);
-    //    PutPixelSDL( screen, projPos.x, projPos.y, color );
-    //
-    //    points.push_back(projPos);
-    // }
-    //
-    // glm::ivec2 a;
-    // glm::ivec2 b;
-    // // Get edges between vertices
-    // for(int i = 0; i < 3; i++) {
-    //   a = points[i];
-    //   if (i == 2) b = points[0];
-    //   else b = points[i + 1];
-    //
-    //   // Calculate number of pixels to draw in interpolation
-    //   glm::ivec2 delta = glm::abs( a - b );
-    //   int pixels = glm::max( delta.x, delta.y ) + 1;
-    //
-    //   // Populate vector with pixels to be drawn
-    //   vector<glm::ivec2> line( pixels );
-    //   Interpolate( a, b, line );
-    //
-    //   // Draw all pixels within line
-    //   DrawLineSDL(screen, line, vec3(1,1,1));
-    // }
   }
 }
 
@@ -213,7 +195,7 @@ void DrawPolygon(screen* screen, const vector<Vertex>& vertices) {
 
   vector<Pixel> vertexPixels(V);
   for (int i=0; i<V; ++i) {
-    VertexShader( vertices[i].position, vertexPixels[i] );
+    VertexShader( vertices[i], vertexPixels[i] );
   }
   vector<Pixel> leftPixels;
   vector<Pixel> rightPixels;
@@ -275,10 +257,12 @@ void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftP
       if (line[j].x <= leftPixels[line[j].y - min].x && line[j].y - min >= 0) { // SEG FAULT FIXED HERE
         leftPixels[line[j].y - min].x = line[j].x;
         leftPixels[line[j].y - min].zinv = line[j].zinv;
+        leftPixels[line[j].y - min].illumination = line[j].illumination;
       }
       if (line[j].x >= rightPixels[line[j].y - min].x && line[j].y - min >= 0) { // SEG FAULT FIXED HERE
         rightPixels[line[j].y - min].x = line[j].x;
         rightPixels[line[j].y - min].zinv = line[j].zinv;
+        rightPixels[line[j].y - min].illumination = line[j].illumination;
       }
     }
     /*----------------------------------------------*/
@@ -295,10 +279,10 @@ void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vec
   }
 }
 
-void VertexShader( const vec4& v, Pixel& p ) {
-  float x3D = v[0] - cameraPos[0];
-  float y3D = v[1] - cameraPos[1];
-  float z3D = v[2] - cameraPos[2];
+void VertexShader( const Vertex& v, Pixel& p ) {
+  float x3D = v.position.x - cameraPos[0];
+  float y3D = v.position.y - cameraPos[1];
+  float z3D = v.position.z - cameraPos[2];
 
 
   float x = (focalLength * (x3D / z3D)) + (SCREEN_WIDTH/2);
@@ -311,7 +295,20 @@ void VertexShader( const vec4& v, Pixel& p ) {
   p.y = y2D;
   p.zinv = 1/z3D;
 
-  // std::cout << x2D << " and " << y2D << '\n';
+  // Compute illumination
+  vec4 r = lightPos - v.position;
+  vec3 vec3r = vec3(r);
+  float r_magnitude = pow(r[0],2) + pow(r[1],2) + pow(r[2],2);
+
+  vec3 normal = vec3(v.normal);
+
+  float vecProduct = glm::dot(vec3r, normal);
+  vec3 D = (lightPower * glm::max(vecProduct, 0.0f)) / (float)(4.0f * M_PI * r_magnitude);
+
+  vec3 totalIllumination = D + indirectLightPowerPerArea;
+
+  p.illumination = totalIllumination;
+
 }
 
 void Interpolate( Pixel a, Pixel b, vector<Pixel>& result ) {
@@ -321,10 +318,18 @@ void Interpolate( Pixel a, Pixel b, vector<Pixel>& result ) {
   float step_y = (float)(b.y-a.y) / float(max(N-1,1));
   float step_z = (b.zinv-a.zinv) / float(max(N-1,1));
 
+  float stepIlluminationX = (b.illumination.x - a.illumination.x) / float(max(N-1,1));
+  float stepIlluminationY = (b.illumination.y - a.illumination.y) / float(max(N-1,1));
+  float stepIlluminationZ = (b.illumination.z - a.illumination.z) / float(max(N-1,1));
+
   for( int i=0; i<N; ++i ) {
      result[i].x = floor(a.x + (step_x * i));
      result[i].y = floor(a.y + (step_y * i));
      result[i].zinv = (a.zinv + (step_z * i));
+
+     result[i].illumination.x = a.illumination.x + (stepIlluminationX * i);
+     result[i].illumination.y = a.illumination.y + (stepIlluminationY * i);
+     result[i].illumination.z = a.illumination.z + (stepIlluminationZ * i);
   }
 }
 
@@ -339,6 +344,7 @@ void PixelShader( const Pixel& p, screen* screen ) {
   int y = p.y;
   if (p.zinv > depthBuffer[y][x]) {
     depthBuffer[y][x] = p.zinv;
-    PutPixelSDL( screen, x, y, currentColor );
+    PutPixelSDL( screen, x, y, currentColor * p.illumination );
+    // printf("%f, %f, %f\n", p.illumination.x, p.illumination.y, p.illumination.z );
   }
 }

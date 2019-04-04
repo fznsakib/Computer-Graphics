@@ -1,0 +1,14 @@
+// A = r1
+// B = r2
+// <- means = (B <- 2 is the same thing as B = 2)
+
+ASSEMBLY      // PSUEDO CODE        // EXPLANATION
+
+CMP r1, 1 ;   // IF A = 1 THEN      // Compare r1(A) to 1
+JE L4     ;   // DO THIS            // If r1(A) is 1, then JE (JUMP) to L4 (Line 4)
+INC r1    ;   // ELSE A <- A + 1    // Here we do the ELSE statement. Since A <- A + 1
+                                    // which means A = A + 1, it is the same as
+                                    // incrementing. INC is the keyword for incrementing.
+                                    // r1(A) is what we're incrementing
+MOV r2, 2 ;   // B <- 2             // This is L4. The IF statement is true so therefore
+                                    // do this (B = 2)
