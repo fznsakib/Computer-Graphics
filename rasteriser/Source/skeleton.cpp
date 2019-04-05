@@ -36,20 +36,24 @@ vec4 lightPos(0,-0.5,-0.7, 1);
 vec3 lightPower = 11.0f*vec3( 1, 1, 1 );
 vec3 indirectLightPowerPerArea = 0.5f*vec3( 1, 1, 1 );
 
+// Normal and reflectance values to be passed to PixelShader
+vec4 currentNormal;
+vec3 currentReflectance;
 
 struct Pixel
 {
   int x;
   int y;
   float zinv;
-  vec3 illumination;
+  //vec3 illumination;
+  vec4 pos3d;
 };
 
 struct Vertex
 {
   vec4 position;
-  vec4 normal;
-  glm::vec3 reflectance;
+  //vec4 normal;
+  //glm::vec3 reflectance;
 };
 
 /* ----------------------------------------------------------------------------*/
@@ -65,6 +69,7 @@ void DrawPolygon( screen* screen, const vector<Vertex>& vertices);
 void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftPixels, vector<Pixel>& rightPixels);
 void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vector<Pixel>& rightPixels );
 void PixelShader( const Pixel& p, screen* screen );
+vec3 calculateIllumination( const Pixel& p, vec4 currentNormal );
 
 
 int main( int argc, char* argv[] )
@@ -127,14 +132,13 @@ void Draw(screen* screen)
      vector<Vertex> vertices(3);
 
      vertices[0].position = triangles[i].v0;
-     vertices[0].normal = triangles[i].normal;
      vertices[1].position = triangles[i].v1;
-     vertices[1].normal = triangles[i].normal;
      vertices[2].position = triangles[i].v2;
-     vertices[2].normal = triangles[i].normal;
 
-     // Set current colour to the colour of the triangle.
+     // Set current colour, reflectance and normal to the colour of the triangle.
      currentColor = triangles[i].color;
+     currentNormal = triangles[i].normal;
+     //currentReflectance = ??;
 
      // Draw and colour the triangles.
      DrawPolygon( screen, vertices );
@@ -152,40 +156,59 @@ bool Update()
 
   SDL_Event e;
   while(SDL_PollEvent(&e))
+  {
+    if (e.type == SDL_QUIT)
     {
-      if (e.type == SDL_QUIT)
-	{
-	  return false;
-	}
-      else
-	if (e.type == SDL_KEYDOWN)
-	  {
-	    int key_code = e.key.keysym.sym;
-	    switch(key_code)
-	      {
-        /* --------------- ADDED KEYPRESS CAMERA MOVEMENTS -------------------*/
-	      case SDLK_UP:
-        cameraPos += vec4(0, 0, 0.1, 0);
-		/* Move camera forward */
-		break;
-	      case SDLK_DOWN:
-        cameraPos += vec4(0, 0, -0.1, 0);
-		/* Move camera backwards */
-		break;
-	      case SDLK_LEFT:
-        cameraPos += vec4(-0.1, 0, 0, 0);
-		/* Move camera left */
-		break;
-	      case SDLK_RIGHT:
-        cameraPos += vec4(0.1, 0, 0, 0);
-		/* Move camera right */
-		break;
-	      case SDLK_ESCAPE:
-		/* Move camera quit */
-		return false;
-	      }
-	  }
+      return false;
     }
+    else
+    if (e.type == SDL_KEYDOWN)
+    {
+      int key_code = e.key.keysym.sym;
+      switch(key_code)
+      {
+        // LIGHT MOVEMENT
+        case SDLK_w:
+          lightPos += vec4(0, 0, 0.1, 0);
+        break;
+        case SDLK_s:
+          lightPos += vec4(0, 0, -0.1, 0);
+        break;
+        case SDLK_a:
+          lightPos += vec4(-0.1, 0, 0, 0);
+        break;
+        case SDLK_d:
+          lightPos += vec4(0.1, 0, 0, 0);
+        break;
+        case SDLK_q:
+          lightPos += vec4(0, 0.1, 0, 0);
+        break;
+        case SDLK_e:
+          lightPos += vec4(0, -0.1, 0, 0);
+        break;
+        // CAMERA MOVEMENT
+        case SDLK_UP:
+        cameraPos += vec4(0, 0, 0.1, 0);
+        /* Move camera forward */
+        break;
+        case SDLK_DOWN:
+        cameraPos += vec4(0, 0, -0.1, 0);
+        /* Move camera backwards */
+        break;
+        case SDLK_LEFT:
+        cameraPos += vec4(-0.1, 0, 0, 0);
+        /* Move camera left */
+        break;
+        case SDLK_RIGHT:
+        cameraPos += vec4(0.1, 0, 0, 0);
+        /* Move camera right */
+        break;
+        case SDLK_ESCAPE:
+        /* Move camera quit */
+        return false;
+      }
+    }
+  }
   return true;
 }
 
@@ -254,15 +277,16 @@ void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftP
     /* interpolation changed to floor() instead of round() to achieve correct vals. */
     /*----------------------------------------------*/
     for (int j = 0; j < line.size(); ++j) {
-      if (line[j].x <= leftPixels[line[j].y - min].x && line[j].y - min >= 0) { // SEG FAULT FIXED HERE
-        leftPixels[line[j].y - min].x = line[j].x;
-        leftPixels[line[j].y - min].zinv = line[j].zinv;
-        leftPixels[line[j].y - min].illumination = line[j].illumination;
+      int inTriangleHeightIndex = line[j].y - min;
+      if (line[j].x <= leftPixels[ inTriangleHeightIndex ].x && line[j].y - min >= 0) { // SEG FAULT FIXED HERE
+        leftPixels[ inTriangleHeightIndex ].x = line[j].x;
+        leftPixels[ inTriangleHeightIndex ].zinv = line[j].zinv;
+        leftPixels[ inTriangleHeightIndex ].pos3d = line[j].pos3d;
       }
-      if (line[j].x >= rightPixels[line[j].y - min].x && line[j].y - min >= 0) { // SEG FAULT FIXED HERE
-        rightPixels[line[j].y - min].x = line[j].x;
-        rightPixels[line[j].y - min].zinv = line[j].zinv;
-        rightPixels[line[j].y - min].illumination = line[j].illumination;
+      if (line[j].x >= rightPixels[ inTriangleHeightIndex ].x && line[j].y - min >= 0) { // SEG FAULT FIXED HERE
+        rightPixels[ inTriangleHeightIndex ].x = line[j].x;
+        rightPixels[ inTriangleHeightIndex ].zinv = line[j].zinv;
+        rightPixels[ inTriangleHeightIndex ].pos3d = line[j].pos3d;
       }
     }
     /*----------------------------------------------*/
@@ -295,20 +319,22 @@ void VertexShader( const Vertex& v, Pixel& p ) {
   p.y = y2D;
   p.zinv = 1/z3D;
 
-  // Compute illumination
-  vec4 r = lightPos - v.position;
-  vec3 vec3r = vec3(r);
-  float r_magnitude = pow(r[0],2) + pow(r[1],2) + pow(r[2],2);
+  // Compute illumination (vertex illumination)
+  // vec4 r = lightPos - v.position;
+  // vec3 vec3r = vec3(r);
+  // float r_magnitude = pow(r[0],2) + pow(r[1],2) + pow(r[2],2);
+  //
+  // vec3 normal = vec3(v.normal);
+  //
+  // float vecProduct = glm::dot(vec3r, normal);
+  // vec3 D = (lightPower * glm::max(vecProduct, 0.0f)) / (float)(4.0f * M_PI * r_magnitude);
+  //
+  // vec3 totalIllumination = D + indirectLightPowerPerArea;
+  //
+  // p.illumination = totalIllumination;
 
-  vec3 normal = vec3(v.normal);
-
-  float vecProduct = glm::dot(vec3r, normal);
-  vec3 D = (lightPower * glm::max(vecProduct, 0.0f)) / (float)(4.0f * M_PI * r_magnitude);
-
-  vec3 totalIllumination = D + indirectLightPowerPerArea;
-
-  p.illumination = totalIllumination;
-
+  // Store 3D position to pixel for illumination (per pixel illumination)
+  p.pos3d = v.position;
 }
 
 void Interpolate( Pixel a, Pixel b, vector<Pixel>& result ) {
@@ -318,18 +344,19 @@ void Interpolate( Pixel a, Pixel b, vector<Pixel>& result ) {
   float step_y = (float)(b.y-a.y) / float(max(N-1,1));
   float step_z = (b.zinv-a.zinv) / float(max(N-1,1));
 
-  float stepIlluminationX = (b.illumination.x - a.illumination.x) / float(max(N-1,1));
-  float stepIlluminationY = (b.illumination.y - a.illumination.y) / float(max(N-1,1));
-  float stepIlluminationZ = (b.illumination.z - a.illumination.z) / float(max(N-1,1));
+  float stepPos3dX = (b.pos3d.x - a.pos3d.x) / float(max(N-1,1));
+  float stepPos3dY = (b.pos3d.y - a.pos3d.y) / float(max(N-1,1));
+  float stepPos3dZ = (b.pos3d.z - a.pos3d.z) / float(max(N-1,1));
 
   for( int i=0; i<N; ++i ) {
      result[i].x = floor(a.x + (step_x * i));
      result[i].y = floor(a.y + (step_y * i));
      result[i].zinv = (a.zinv + (step_z * i));
 
-     result[i].illumination.x = a.illumination.x + (stepIlluminationX * i);
-     result[i].illumination.y = a.illumination.y + (stepIlluminationY * i);
-     result[i].illumination.z = a.illumination.z + (stepIlluminationZ * i);
+     result[i].pos3d.x = a.pos3d.x + (stepPos3dX * i);
+     result[i].pos3d.y = a.pos3d.y + (stepPos3dY * i);
+     result[i].pos3d.z = a.pos3d.z + (stepPos3dZ * i);
+     result[i].pos3d.w = 1.0f;
   }
 }
 
@@ -344,7 +371,23 @@ void PixelShader( const Pixel& p, screen* screen ) {
   int y = p.y;
   if (p.zinv > depthBuffer[y][x]) {
     depthBuffer[y][x] = p.zinv;
-    PutPixelSDL( screen, x, y, currentColor * p.illumination );
+    PutPixelSDL( screen, x, y, currentColor * calculateIllumination(p, currentNormal) );
     // printf("%f, %f, %f\n", p.illumination.x, p.illumination.y, p.illumination.z );
   }
+}
+
+vec3 calculateIllumination(const Pixel& p, vec4 currentNormal) {
+  vec4 r = lightPos - p.pos3d;
+  vec3 vec3r = vec3(r);
+  float r_magnitude = pow(r[0],2) + pow(r[1],2) + pow(r[2],2);
+
+  vec3 normal = vec3(currentNormal);
+
+  float vecProduct = glm::dot(vec3r, normal);
+  vec3 D = (lightPower * glm::max(vecProduct, 0.0f)) / (float)(4.0f * M_PI * r_magnitude);
+
+  vec3 totalIllumination = D + indirectLightPowerPerArea;
+
+  return totalIllumination;
+
 }
