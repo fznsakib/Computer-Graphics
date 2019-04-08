@@ -338,6 +338,12 @@ void VertexShader( const Vertex& v, Pixel& p ) {
 }
 
 void Interpolate( Pixel a, Pixel b, vector<Pixel>& result ) {
+  // Perspective correction
+  a.pos3d.x = a.pos3d.x * a.zinv;
+  a.pos3d.y = a.pos3d.y * a.zinv;
+
+  b.pos3d.x = b.pos3d.x * b.zinv;
+  b.pos3d.y = b.pos3d.y * b.zinv;
   int N = result.size();
 
   float step_x = (float)(b.x-a.x) / float(max(N-1,1));
@@ -353,9 +359,10 @@ void Interpolate( Pixel a, Pixel b, vector<Pixel>& result ) {
      result[i].y = floor(a.y + (step_y * i));
      result[i].zinv = (a.zinv + (step_z * i));
 
-     result[i].pos3d.x = a.pos3d.x + (stepPos3dX * i);
-     result[i].pos3d.y = a.pos3d.y + (stepPos3dY * i);
+     // Divide by z-inverse for perspective correction
      result[i].pos3d.z = a.pos3d.z + (stepPos3dZ * i);
+     result[i].pos3d.x = (a.pos3d.x + (stepPos3dX * i)) / result[i].zinv;
+     result[i].pos3d.y = (a.pos3d.y + (stepPos3dY * i)) / result[i].zinv;
      result[i].pos3d.w = 1.0f;
   }
 }
