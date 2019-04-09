@@ -104,19 +104,33 @@ void Draw(screen* screen) {
       /* Calculate the new direction vector after yaw rotation */
       dir = R * dir;
 
-      Intersection intersection;
-      bool closestIntersection = ClosestIntersection(cameraPos, dir, triangles, intersection);
+      pixelColour = vec3 (0.0f, 0.0f, 0.0f);
+      bool validRay = false;
 
-      // If light intersects with triangle then draw it
-      if (closestIntersection == true) {
+      for (int i = -1; i <= 1; ++i) {
+        for (int j = -1; j <= 1; ++j ) {
+          float multiplier = 0.5;
+          vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
 
-        for (int i = 0; i < lights.size(); i++) {
-          pixelColour = DirectLight( intersection, triangles, lights[i] );
+          Intersection intersection;
+          bool closestIntersection = ClosestIntersection(cameraPos, newDir, triangles, intersection);
+
+          // If light intersects with triangle then draw it
+          if (closestIntersection == true) {
+            validRay = true;
+
+            for (int i = 0; i < lights.size(); i++) {
+              pixelColour += DirectLight( intersection, triangles, lights[i] );
+            }
+
+            // Take into account indirect illumination
+            pixelColour = pixelColour + (triangles[intersection.triangleIndex].color * indirectLight);
+          }
         }
-
-        // Take into account indirect illumination
-        pixelColour = pixelColour + (triangles[intersection.triangleIndex].color * indirectLight);
-        PutPixelSDL(screen, u, v, pixelColour);
+      }
+      if (validRay == true) {
+        vec3 averageLight = pixelColour/9.0f;
+        PutPixelSDL(screen, u, v, averageLight);
       }
       else {
         PutPixelSDL(screen, u, v, black);
