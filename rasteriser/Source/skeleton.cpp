@@ -32,7 +32,7 @@ float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH]; // Stores depth information of s
                                                 // is stored as 1/z.
 
 // Initialise light variables
-vec4 lightPos(0,-0.5,-0.7, 1);
+vec4 lightPos(0,-0,-0, 1);
 vec3 lightPower = 11.0f*vec3( 1, 1, 1 );
 vec3 indirectLightPowerPerArea = 0.5f*vec3( 1, 1, 1 );
 
@@ -70,6 +70,9 @@ void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftP
 void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vector<Pixel>& rightPixels );
 void PixelShader( const Pixel& p, screen* screen );
 vec3 calculateIllumination( const Pixel& p, vec4 currentNormal );
+void toClipSpace( vector<Triangle>& v );
+vector<Triangle> clipZ( vector<Triangle> triangles );
+vector<Triangle> clipXY( vector<Triangle> triangles, int plane );
 
 
 int main( int argc, char* argv[] )
@@ -115,6 +118,16 @@ void Draw(screen* screen)
   LoadTestModel( triangles );
   //std::vector<glm::ivec2> points;
 
+  // Transform triangles to clip space
+  toClipSpace(triangles);
+
+  // Clip the list of triangles on all planes of the frustrum
+  vector<Triangle> clippedTriangles = clipZ(triangles);
+  clippedTriangles = clipXY(clippedTriangles, 1);
+  clippedTriangles = clipXY(clippedTriangles, 2);
+  clippedTriangles = clipXY(clippedTriangles, 3);
+  clippedTriangles = clipXY(clippedTriangles, 4);
+
   /* Clear buffer */
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
 
@@ -125,19 +138,19 @@ void Draw(screen* screen)
     }
   }
 
-  // Go through all triangles
-  for( uint32_t i=0; i<triangles.size(); ++i ) {
+  // Go through all clipped triangles
+  for( uint32_t i=0; i<clippedTriangles.size(); ++i ) {
 
      //points.clear();
      vector<Vertex> vertices(3);
 
-     vertices[0].position = triangles[i].v0;
-     vertices[1].position = triangles[i].v1;
-     vertices[2].position = triangles[i].v2;
+     vertices[0].position = clippedTriangles[i].v0;
+     vertices[1].position = clippedTriangles[i].v1;
+     vertices[2].position = clippedTriangles[i].v2;
 
      // Set current colour, reflectance and normal to the colour of the triangle.
-     currentColor = triangles[i].color;
-     currentNormal = triangles[i].normal;
+     currentColor = clippedTriangles[i].color;
+     currentNormal = clippedTriangles[i].normal;
      //currentReflectance = ??;
 
      // Draw and colour the triangles.
@@ -261,7 +274,7 @@ void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftP
   Pixel b;
   for(int i = 0; i < vertexPixels.size(); i++) {
     a = vertexPixels[i];
-    if (i == 2) b = vertexPixels[0];
+    if (i == vertexPixels.size() - 1) b = vertexPixels[0];
     else b = vertexPixels[i + 1];
 
     // Calculate number of pixels to draw in interpolation
@@ -304,20 +317,15 @@ void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vec
 }
 
 void VertexShader( const Vertex& v, Pixel& p ) {
-  float x3D = v.position.x - cameraPos[0];
-  float y3D = v.position.y - cameraPos[1];
-  float z3D = v.position.z - cameraPos[2];
-
-
-  float x = (focalLength * (x3D / z3D)) + (SCREEN_WIDTH/2);
-  float y = (focalLength * (y3D / z3D)) + (SCREEN_HEIGHT/2);
+  float x = (focalLength * (v.position.x / v.position.z)) + (SCREEN_WIDTH/2);
+  float y = (focalLength * (v.position.y / v.position.z)) + (SCREEN_HEIGHT/2);
 
   int x2D = static_cast<int>(x);
   int y2D = static_cast<int>(y);
 
   p.x = x2D;
   p.y = y2D;
-  p.zinv = 1/z3D;
+  p.zinv = 1/v.position.z;
 
   // Compute illumination (vertex illumination)
   // vec4 r = lightPos - v.position;
@@ -384,7 +392,7 @@ void PixelShader( const Pixel& p, screen* screen ) {
 }
 
 vec3 calculateIllumination(const Pixel& p, vec4 currentNormal) {
-  vec4 r = lightPos - p.pos3d;
+  vec4 r = (lightPos - cameraPos) - p.pos3d;
   vec3 vec3r = vec3(r);
   float r_magnitude = pow(r[0],2) + pow(r[1],2) + pow(r[2],2);
 
@@ -397,4 +405,160 @@ vec3 calculateIllumination(const Pixel& p, vec4 currentNormal) {
 
   return totalIllumination;
 
+}
+
+void toClipSpace(vector<Triangle>& triangles) {
+  for (int i = 0; i<triangles.size(); ++i) {
+    triangles[i].v0 = triangles[i].v0 - cameraPos;
+    triangles[i].v1 = triangles[i].v1 - cameraPos;
+    triangles[i].v2 = triangles[i].v2 - cameraPos;
+
+    triangles[i].v0.w = triangles[i].v0.z/focalLength;
+    triangles[i].v1.w = triangles[i].v1.z/focalLength;
+    triangles[i].v2.w = triangles[i].v2.z/focalLength;
+  }
+}
+
+vector<Triangle> clipZ(vector<Triangle> triangles) {
+  // Normal of z-plane
+  vec4 planeNormal = vec4(0,0,1,1.0f);
+  // Position on z-plane
+  vec4 p = cameraPos + vec4(0,0, 4.0f,0.0f);
+
+  float dot[3];
+
+  vector<Triangle> clippedTriangles;
+
+  for (int i = 0; i < triangles.size(); ++i) {
+    dot[0] = glm::dot(planeNormal, (triangles[i].v0 - p));
+    dot[1] = glm::dot(planeNormal, (triangles[i].v1 - p));
+    dot[2] = glm::dot(planeNormal, (triangles[i].v2 - p));
+
+    if (dot[0] > 0 && dot[1] > 0 && dot[2] > 0) {
+      clippedTriangles.push_back(triangles[i]);
+    }
+
+    // if (dot[0] <= 0 && dot[1] > 0 && dot[2] > 0) {
+    //   vec4 newPoint1;
+    //   newPoint1 = triangles[i].v1 + (dot[1]/dot[1]-dot[0])*(triangles[i].v0-triangles[i].v1);
+    //   vec4 newPoint2;
+    //   newPoint2 = triangles[i].v2 + (dot[2]/dot[2]-dot[0])*(triangles[i].v0-triangles[i].v2);
+    //
+    //   triangles[i].v0 = newPoint1;
+    //
+    //   Triangle extraTriangle(newPoint1, newPoint2, triangles[i].v2, triangles[i].color);
+    //   extraTriangle.normal = triangles[i].normal;
+    //   // extraTriangle.v0 = newPoint1;
+    //   // extraTriangle.v1 = newPoint2;
+    //   // extraTriangle.v2 = triangles[i].v2;
+    //   // extraTriangle.color = triangles[i].color;
+    //   // extraTriangle.normal = triangles[i].normal;
+    //
+    //   clippedTriangles.push_back(triangles[i]);
+    //   clippedTriangles.push_back(extraTriangle);
+    // }
+    //
+    // if (dot[1] <= 0 && dot[0] > 0 && dot[2] > 0) {
+    //   vec4 newPoint1;
+    //   newPoint1 = triangles[i].v1 + (dot[1]/dot[1]-dot[0])*(triangles[i].v0-triangles[i].v1);
+    //   vec4 newPoint2;
+    //   newPoint2 = triangles[i].v1 + (dot[1]/dot[1]-dot[2])*(triangles[i].v2-triangles[i].v1);
+    //
+    //   triangles[i].v1 = newPoint1;
+    //
+    //   Triangle extraTriangle(newPoint1, newPoint2, triangles[i].v2, triangles[i].color);
+    //   extraTriangle.normal = triangles[i].normal;
+    //   // extraTriangle.v0 = newPoint1;
+    //   // extraTriangle.v1 = newPoint2;
+    //   // extraTriangle.v2 = triangles[i].v2;
+    //   // extraTriangle.color = triangles[i].color;
+    //   // extraTriangle.normal = triangles[i].normal;
+    //
+    //   clippedTriangles.push_back(triangles[i]);
+    //   clippedTriangles.push_back(extraTriangle);
+    // }
+    //
+    // if (dot[2] <= 0 && dot[1] > 0 && dot[2] > 0) {
+    //   vec4 newPoint1;
+    //   newPoint1 = triangles[i].v2 + (dot[2]/dot[2]-dot[1])*(triangles[i].v1-triangles[i].v2);
+    //   vec4 newPoint2;
+    //   newPoint2 = triangles[i].v2 + (dot[2]/dot[2]-dot[0])*(triangles[i].v0-triangles[i].v2);
+    //
+    //   triangles[i].v2 = newPoint1;
+    //
+    //   Triangle extraTriangle(newPoint1, newPoint2, triangles[i].v0, triangles[i].color);
+    //   extraTriangle.normal = triangles[i].normal;
+    //   // extraTriangle.v0 = newPoint1;
+    //   // extraTriangle.v1 = newPoint2;
+    //   // extraTriangle.v2 = triangles[i].v0;
+    //   // extraTriangle.color = triangles[i].color;
+    //   // extraTriangle.normal = triangles[i].normal;
+    //
+    //   clippedTriangles.push_back(triangles[i]);
+    //   clippedTriangles.push_back(extraTriangle);
+    // }
+  }
+  return clippedTriangles;
+}
+
+vector<Triangle> clipXY(vector<Triangle> triangles, int plane) {
+  vector<Triangle> clippedTriangles;
+  vec4 p;
+  vec4 planeNormal;
+  float dot[3];
+
+  switch (plane) {
+    // Define left side x-plane
+    case 1:
+      for (int i = 0; i < triangles.size(); ++i) {
+        dot[0] = -triangles[i].v0.w*160; // (160 = SCREEN_WIDTH/2)
+        dot[1] = -triangles[i].v1.w*160;
+        dot[2] = -triangles[i].v2.w*160;
+
+        if (triangles[i].v0.x >= dot[0] && triangles[i].v1.x >= dot[1] && triangles[i].v2.x >= dot[2]) {
+          clippedTriangles.push_back(triangles[i]);
+        }
+      }
+      break;
+
+    // Define right side x-plane
+    case 2:
+      for (int i = 0; i < triangles.size(); ++i) {
+        dot[0] = triangles[i].v0.w*160; // (160 = SCREEN_WIDTH/2)
+        dot[1] = triangles[i].v1.w*160;
+        dot[2] = triangles[i].v2.w*160;
+
+        if (triangles[i].v0.x <= dot[0] && triangles[i].v1.x <= dot[1] && triangles[i].v2.x <= dot[2]) {
+          clippedTriangles.push_back(triangles[i]);
+        }
+      }
+      break;
+
+    // Define top side y-plane
+    case 3:
+      for (int i = 0; i < triangles.size(); ++i) {
+        dot[0] = triangles[i].v0.w*128; // (128 = SCREEN_HEIGHT/2)
+        dot[1] = triangles[i].v1.w*128;
+        dot[2] = triangles[i].v2.w*128;
+
+        if (triangles[i].v0.y <= dot[0] && triangles[i].v1.y <= dot[1] && triangles[i].v2.x <= dot[2]) {
+          clippedTriangles.push_back(triangles[i]);
+        }
+      }
+      break;
+
+    // Define bottom side y-plane
+    case 4:
+      for (int i = 0; i < triangles.size(); ++i) {
+        dot[0] = -triangles[i].v0.w*128; // (128 = SCREEN_HEIGHT/2)
+        dot[1] = -triangles[i].v1.w*128;
+        dot[2] = -triangles[i].v2.w*128;
+
+        if (triangles[i].v0.y >= dot[0] && triangles[i].v1.y >= dot[1] && triangles[i].v2.x >= dot[2]) {
+          clippedTriangles.push_back(triangles[i]);
+        }
+      }
+      break;
+  }
+  return clippedTriangles;
 }
