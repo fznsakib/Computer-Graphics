@@ -216,6 +216,14 @@ bool Update()
         cameraPos += vec4(0.1, 0, 0, 0);
         /* Move camera right */
         break;
+        case SDLK_z:
+        cameraPos += vec4(0, -0.1, 0, 0);
+        /* Move camera down */
+        break;
+        case SDLK_x:
+        cameraPos += vec4(0, 0.1, 0, 0);
+        /* Move camera up */
+        break;
         case SDLK_ESCAPE:
         /* Move camera quit */
         return false;
@@ -423,7 +431,7 @@ vector<Triangle> clipZ(vector<Triangle> triangles) {
   // Normal of z-plane
   vec4 planeNormal = vec4(0,0,1,1.0f);
   // Position on z-plane
-  vec4 p = cameraPos + vec4(0,0, 4.0f,0.0f);
+  vec4 p = cameraPos + vec4(0,0,0,0);
 
   float dot[3];
 
@@ -541,7 +549,7 @@ vector<Triangle> clipXY(vector<Triangle> triangles, int plane) {
         dot[1] = triangles[i].v1.w*128;
         dot[2] = triangles[i].v2.w*128;
 
-        if (triangles[i].v0.y <= dot[0] && triangles[i].v1.y <= dot[1] && triangles[i].v2.x <= dot[2]) {
+        if (triangles[i].v0.y <= dot[0] && triangles[i].v1.y <= dot[1] && triangles[i].v2.y <= dot[2]) {
           clippedTriangles.push_back(triangles[i]);
         }
       }
@@ -554,7 +562,7 @@ vector<Triangle> clipXY(vector<Triangle> triangles, int plane) {
         dot[1] = -triangles[i].v1.w*128;
         dot[2] = -triangles[i].v2.w*128;
 
-        if (triangles[i].v0.y >= dot[0] && triangles[i].v1.y >= dot[1] && triangles[i].v2.x >= dot[2]) {
+        if (triangles[i].v0.y >= dot[0] && triangles[i].v1.y >= dot[1] && triangles[i].v2.y >= dot[2]) {
           clippedTriangles.push_back(triangles[i]);
         }
       }
