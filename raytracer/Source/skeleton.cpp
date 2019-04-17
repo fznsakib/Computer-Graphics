@@ -285,10 +285,10 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
       vec3 e1 = vec3(v1.x - v0.x ,v1.y - v0.y,v1.z - v0.z);
       vec3 e2 = vec3(v2.x - v0.x ,v2.y - v0.y,v2.z - v0.z);
-      vec3 b = vec3(start.x-v0.x, start.y-v0.y, start.z-v0.z);
+      // vec3 b = vec3(start.x-v0.x, start.y-v0.y, start.z-v0.z);
 
-      // Currently: 48415ms without -O3, 600ms with -O3
-      // With Cramer's rule: Similar to above without -O3, 450ms with -O3
+      // Currently: 55000ms without -O3, 600ms with -O3
+      // With Cramer's rule: 47000ms without -O3, 430ms with -O3
       vec3 dir3 = vec3(dir[0], dir[1], dir[2]);
       glm::mat3 system( -dir3, e1, e2 );
 
@@ -308,11 +308,14 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       // Where t = det(system_t)/det(system)
       glm::mat3 system_t( solutions3, e1, e2 );
       float t = glm::determinant(system_t)/glm::determinant(system);
+      float distance = t * glm::length(dir3);
 
 
-      // If t is negative, the intersection does not occur, so carry on to
-      // the next one
-      if (t < 0.0f) continue;
+      // If the distance is negative, the intersection does not occur, so carry on to the next one.
+      if (distance < 0.0f) continue;
+      // Do distance checks earlier to move on quicker if possible
+      else if (distance >= closestIntersection.distance || distance > bound) continue;
+
 
       // Similar to t, calculate u and v
       glm::mat3 system_u( -dir3, solutions3, e2 );
@@ -325,27 +328,17 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       // vec3 x = glm::inverse( system ) * b;
 
       vec4 position = start + vec4(t * dir3, 0);
-      float distance = t * glm::length(dir3);
 
-      bool check1 = u >= 0;
-      bool check2 = v >= 0;
-      bool check3 = (u + v) <= 1;
-      bool check4 = t >= 0;
-      bool check5 = distance < bound;
-      bool check6 = distance < closestIntersection.distance;
+      bool check = (u >= 0) && (v >= 0) && ((u + v) <= 1);
 
-      if ( check1 && check2 && check3 && check4 && check5 && check6 ) {
+      if (check) {
         closestIntersection.position = position;
         closestIntersection.distance = distance;
         closestIntersection.triangleIndex = i;
       }
     }
 
-    // std::cout << "getting here with" << '\n';
-    // std::cout << closestIntersection.distance << '\n';
-
     if ( closestIntersection.distance < bound ) {
-        // std::cout << "returning true" << '\n';
         return true;
     }
     else {
