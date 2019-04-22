@@ -32,7 +32,7 @@ float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH]; // Stores depth information of s
                                                 // is stored as 1/z.
 
 // Initialise light variables
-vec4 lightPos(0,-0,-0, 1);
+vec4 lightPos(0, -0.5, 0, 1);
 vec3 lightPower = 11.0f*vec3( 1, 1, 1 );
 vec3 indirectLightPowerPerArea = 0.5f*vec3( 1, 1, 1 );
 
@@ -72,7 +72,7 @@ void PixelShader( const Pixel& p, screen* screen );
 vec3 calculateIllumination( const Pixel& p, vec4 currentNormal );
 void toClipSpace( vector<Triangle>& v );
 vector<Triangle> clipZ( vector<Triangle> triangles );
-vector<Triangle> clipXY( vector<Triangle> triangles, int plane );
+vector<Triangle> clip( vector<Triangle> triangles, int plane );
 
 
 int main( int argc, char* argv[] )
@@ -122,26 +122,24 @@ void Draw(screen* screen)
   toClipSpace(triangles);
 
   // Clip the list of triangles on all planes of the frustrum
-  vector<Triangle> clippedTriangles = clipZ(triangles);
-  clippedTriangles = clipXY(clippedTriangles, 1);
-  clippedTriangles = clipXY(clippedTriangles, 2);
-  clippedTriangles = clipXY(clippedTriangles, 3);
-  clippedTriangles = clipXY(clippedTriangles, 4);
+  // 1: Left of camera  2: Right of camera  3: Bottom of camera  4: Top of camera
+  // 5: Behind camera
+  vector<Triangle> clippedTriangles = clip(triangles, 5);
+  clippedTriangles = clip(clippedTriangles, 1);
+  clippedTriangles = clip(clippedTriangles, 2);
+  clippedTriangles = clip(clippedTriangles, 3);
+  clippedTriangles = clip(clippedTriangles, 4);
 
   /* Clear buffer */
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
 
   // Clear depth buffer.
-  for (int y=0; y<SCREEN_HEIGHT; ++y) {
-    for (int x=0; x<SCREEN_WIDTH; ++x) {
-      depthBuffer[y][x] = 0;
-    }
-  }
+  memset(depthBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(float));
 
   // Go through all clipped triangles
   for( uint32_t i=0; i<clippedTriangles.size(); ++i ) {
 
-     //points.clear();
+     // Load triangle information into vertices
      vector<Vertex> vertices(3);
 
      vertices[0].position = clippedTriangles[i].v0;
@@ -325,6 +323,7 @@ void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vec
 }
 
 void VertexShader( const Vertex& v, Pixel& p ) {
+
   float x = (focalLength * (v.position.x / v.position.z)) + (SCREEN_WIDTH/2);
   float y = (focalLength * (v.position.y / v.position.z)) + (SCREEN_HEIGHT/2);
 
@@ -415,158 +414,961 @@ vec3 calculateIllumination(const Pixel& p, vec4 currentNormal) {
 
 }
 
+/* THIS FUNCTION CONVERTS ALL TRIANGLE INFORMATION FROM 3D TO CLIP SPACE */
 void toClipSpace(vector<Triangle>& triangles) {
   for (int i = 0; i<triangles.size(); ++i) {
+    // Changing from world space to camera space.
     triangles[i].v0 = triangles[i].v0 - cameraPos;
     triangles[i].v1 = triangles[i].v1 - cameraPos;
     triangles[i].v2 = triangles[i].v2 - cameraPos;
 
+    // W = Z/f
     triangles[i].v0.w = triangles[i].v0.z/focalLength;
     triangles[i].v1.w = triangles[i].v1.z/focalLength;
     triangles[i].v2.w = triangles[i].v2.z/focalLength;
   }
 }
 
-vector<Triangle> clipZ(vector<Triangle> triangles) {
-  // Normal of z-plane
-  vec4 planeNormal = vec4(0,0,1,1.0f);
-  // Position on z-plane
-  vec4 p = cameraPos + vec4(0,0,0,0);
+// /* THIS FUNCTION CLIPS AT THE Z AXIS (FOR NEAR AND FAR PLANE) */
+// vector<Triangle> clipZ(vector<Triangle> triangles) {
+//   // Normal of Z-plane
+//   vec4 planeNormal = vec4(0,0,1,1.0f);
+//   // Position on Z-plane
+//   vec4 p = cameraPos + vec4(0,0,0,0);
+//
+//   // Stores the dot product of the Z-plane normal and the line from vertices to
+//   // the plane. Results will be the cosine of the angle between the line and the
+//   // plane, hence positive if 'inside' and 'negative' if outside.
+//   float dot[3];
+//
+//   // Vector that stores triangles that are 'inside' the plane.
+//   vector<Triangle> clippedTriangles;
+//
+//   for (int i = 0; i < triangles.size(); ++i) {
+//     dot[0] = glm::dot(planeNormal, (triangles[i].v0 - p));
+//     dot[1] = glm::dot(planeNormal, (triangles[i].v1 - p));
+//     dot[2] = glm::dot(planeNormal, (triangles[i].v2 - p));
+//
+//     // If all dot products indicate 'inside', add all vertices.
+//     if (dot[0] > 0 && dot[1] > 0 && dot[2] > 0) {
+//       clippedTriangles.push_back(triangles[i]);
+//     }
+//   }
+//   return clippedTriangles;
+// }
 
-  float dot[3];
+/* THIS FUNCTION CLIPS THE VIEWING FRUSTRUM. EACH CASE CORRESPONDS TO A DIFFERENT
+   PLANE */
+vector<Triangle> clip(vector<Triangle> triangles, int plane) {
 
+  // Vector to store triangles kept after clipping process.
   vector<Triangle> clippedTriangles;
 
-  for (int i = 0; i < triangles.size(); ++i) {
-    dot[0] = glm::dot(planeNormal, (triangles[i].v0 - p));
-    dot[1] = glm::dot(planeNormal, (triangles[i].v1 - p));
-    dot[2] = glm::dot(planeNormal, (triangles[i].v2 - p));
-
-    if (dot[0] > 0 && dot[1] > 0 && dot[2] > 0) {
-      clippedTriangles.push_back(triangles[i]);
-    }
-
-    // if (dot[0] <= 0 && dot[1] > 0 && dot[2] > 0) {
-    //   vec4 newPoint1;
-    //   newPoint1 = triangles[i].v1 + (dot[1]/dot[1]-dot[0])*(triangles[i].v0-triangles[i].v1);
-    //   vec4 newPoint2;
-    //   newPoint2 = triangles[i].v2 + (dot[2]/dot[2]-dot[0])*(triangles[i].v0-triangles[i].v2);
-    //
-    //   triangles[i].v0 = newPoint1;
-    //
-    //   Triangle extraTriangle(newPoint1, newPoint2, triangles[i].v2, triangles[i].color);
-    //   extraTriangle.normal = triangles[i].normal;
-    //   // extraTriangle.v0 = newPoint1;
-    //   // extraTriangle.v1 = newPoint2;
-    //   // extraTriangle.v2 = triangles[i].v2;
-    //   // extraTriangle.color = triangles[i].color;
-    //   // extraTriangle.normal = triangles[i].normal;
-    //
-    //   clippedTriangles.push_back(triangles[i]);
-    //   clippedTriangles.push_back(extraTriangle);
-    // }
-    //
-    // if (dot[1] <= 0 && dot[0] > 0 && dot[2] > 0) {
-    //   vec4 newPoint1;
-    //   newPoint1 = triangles[i].v1 + (dot[1]/dot[1]-dot[0])*(triangles[i].v0-triangles[i].v1);
-    //   vec4 newPoint2;
-    //   newPoint2 = triangles[i].v1 + (dot[1]/dot[1]-dot[2])*(triangles[i].v2-triangles[i].v1);
-    //
-    //   triangles[i].v1 = newPoint1;
-    //
-    //   Triangle extraTriangle(newPoint1, newPoint2, triangles[i].v2, triangles[i].color);
-    //   extraTriangle.normal = triangles[i].normal;
-    //   // extraTriangle.v0 = newPoint1;
-    //   // extraTriangle.v1 = newPoint2;
-    //   // extraTriangle.v2 = triangles[i].v2;
-    //   // extraTriangle.color = triangles[i].color;
-    //   // extraTriangle.normal = triangles[i].normal;
-    //
-    //   clippedTriangles.push_back(triangles[i]);
-    //   clippedTriangles.push_back(extraTriangle);
-    // }
-    //
-    // if (dot[2] <= 0 && dot[1] > 0 && dot[2] > 0) {
-    //   vec4 newPoint1;
-    //   newPoint1 = triangles[i].v2 + (dot[2]/dot[2]-dot[1])*(triangles[i].v1-triangles[i].v2);
-    //   vec4 newPoint2;
-    //   newPoint2 = triangles[i].v2 + (dot[2]/dot[2]-dot[0])*(triangles[i].v0-triangles[i].v2);
-    //
-    //   triangles[i].v2 = newPoint1;
-    //
-    //   Triangle extraTriangle(newPoint1, newPoint2, triangles[i].v0, triangles[i].color);
-    //   extraTriangle.normal = triangles[i].normal;
-    //   // extraTriangle.v0 = newPoint1;
-    //   // extraTriangle.v1 = newPoint2;
-    //   // extraTriangle.v2 = triangles[i].v0;
-    //   // extraTriangle.color = triangles[i].color;
-    //   // extraTriangle.normal = triangles[i].normal;
-    //
-    //   clippedTriangles.push_back(triangles[i]);
-    //   clippedTriangles.push_back(extraTriangle);
-    // }
-  }
-  return clippedTriangles;
-}
-
-vector<Triangle> clipXY(vector<Triangle> triangles, int plane) {
-  vector<Triangle> clippedTriangles;
-  vec4 p;
-  vec4 planeNormal;
+  // Array to store the w-dimension corrected limits for each vertex.
   float dot[3];
 
   switch (plane) {
-    // Define left side x-plane
+    // Clip at left side x-plane
     case 1:
-      for (int i = 0; i < triangles.size(); ++i) {
-        dot[0] = -triangles[i].v0.w*160; // (160 = SCREEN_WIDTH/2)
-        dot[1] = -triangles[i].v1.w*160;
-        dot[2] = -triangles[i].v2.w*160;
+    for (int i = 0; i < triangles.size(); ++i) {
+      dot[0] = triangles[i].v0.w * -SCREEN_WIDTH/2; // the line of x = -SCREEN_WIDTH/2 in the clip space
+      dot[1] = triangles[i].v1.w * -SCREEN_WIDTH/2;
+      dot[2] = triangles[i].v2.w * -SCREEN_WIDTH/2;
 
-        if (triangles[i].v0.x >= dot[0] && triangles[i].v1.x >= dot[1] && triangles[i].v2.x >= dot[2]) {
-          clippedTriangles.push_back(triangles[i]);
-        }
+      // CASE ALL VERTICES ARE IN THE PLANE
+      if (triangles[i].v0.x >= dot[0] && triangles[i].v1.x >= dot[1] && triangles[i].v2.x >= dot[2]) {
+        clippedTriangles.push_back(triangles[i]);
       }
-      break;
 
-    // Define right side x-plane
+      // CASE V0 IS IN
+      else if (triangles[i].v0.x >= dot[0] && triangles[i].v1.x < dot[1] && triangles[i].v2.x < dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (x0 + SCREEN_WIDTH/2*w0)/(-SCREEN_WIDTH/2*w1 + SCREEN_WIDTH/2*w0 - x1 + x0);
+        float t_02 = (x0 + SCREEN_WIDTH/2*w0)/(-SCREEN_WIDTH/2*w2 + SCREEN_WIDTH/2*w0 - x2 + x0);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        triangles[i].v2 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V1 IS IN
+      else if (triangles[i].v0.x < dot[0] && triangles[i].v1.x >= dot[1] && triangles[i].v2.x < dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (x1 + SCREEN_WIDTH/2*w1)/(-SCREEN_WIDTH/2*w0 + SCREEN_WIDTH/2*w1 - x0 + x1);
+        float t_12 = (x1 + SCREEN_WIDTH/2*w1)/(-SCREEN_WIDTH/2*w2 + SCREEN_WIDTH/2*w1 - x2 + x1);
+
+        // Set new vertex positions.
+        triangles[i].v0 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        triangles[i].v2 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V2 IS IN
+      else if (triangles[i].v0.x < dot[0] && triangles[i].v1.x < dot[1] && triangles[i].v2.x >= dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_21 = (x2 + SCREEN_WIDTH/2*w2)/(-SCREEN_WIDTH/2*w1 + SCREEN_WIDTH/2*w2 - x1 + x2);
+        float t_20 = (x2 + SCREEN_WIDTH/2*w2)/(-SCREEN_WIDTH/2*w0 + SCREEN_WIDTH/2*w2 - x0 + x2);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+        triangles[i].v0 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+              /* WHEN 2 VERTICES ARE INSIDE, SPLIT INTO 2 TRIANGLES */
+
+      // CASE V0 AND V1 ARE IN
+      else if (triangles[i].v0.x >= dot[0] && triangles[i].v1.x >= dot[1] && triangles[i].v2.x < dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_12 = (x1 + SCREEN_WIDTH/2*w1)/(-SCREEN_WIDTH/2*w2 + SCREEN_WIDTH/2*w1 - x2 + x1);
+        float t_02 = (x0 + SCREEN_WIDTH/2*w0)/(-SCREEN_WIDTH/2*w2 + SCREEN_WIDTH/2*w0 - x2 + x0);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_12;
+        vec4 newPoint_02;
+        newPoint_12 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+        newPoint_02 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v2 = newPoint_02;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V0 AND V2 ARE IN
+      else if (triangles[i].v0.x >= dot[0] && triangles[i].v1.x < dot[1] && triangles[i].v2.x >= dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (x0 + SCREEN_WIDTH/2*w0)/(-SCREEN_WIDTH/2*w1 + SCREEN_WIDTH/2*w0 - x1 + x0);
+        float t_21 = (x2 + SCREEN_WIDTH/2*w2)/(-SCREEN_WIDTH/2*w1 + SCREEN_WIDTH/2*w2 - x1 + x2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_01;
+        vec4 newPoint_21;
+        newPoint_01 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        newPoint_21 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v1 = newPoint_01;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V1 AND V2 ARE IN
+      else if (triangles[i].v0.x < dot[0] && triangles[i].v1.x >= dot[1] && triangles[i].v2.x >= dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (x1 + SCREEN_WIDTH/2*w1)/(-SCREEN_WIDTH/2*w0 + SCREEN_WIDTH/2*w1 - x0 + x1);
+        float t_20 = (x2 + SCREEN_WIDTH/2*w2)/(-SCREEN_WIDTH/2*w0 + SCREEN_WIDTH/2*w2 - x0 + x2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_10;
+        vec4 newPoint_20;
+        newPoint_10 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        newPoint_20 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v0 = newPoint_10;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+    }
+    break;
+
+    // Clip at right side x-plane
     case 2:
-      for (int i = 0; i < triangles.size(); ++i) {
-        dot[0] = triangles[i].v0.w*160; // (160 = SCREEN_WIDTH/2)
-        dot[1] = triangles[i].v1.w*160;
-        dot[2] = triangles[i].v2.w*160;
+    for (int i = 0; i < triangles.size(); ++i) {
+      dot[0] = triangles[i].v0.w * SCREEN_WIDTH/2;
+      dot[1] = triangles[i].v1.w * SCREEN_WIDTH/2;
+      dot[2] = triangles[i].v2.w * SCREEN_WIDTH/2;
 
-        if (triangles[i].v0.x <= dot[0] && triangles[i].v1.x <= dot[1] && triangles[i].v2.x <= dot[2]) {
-          clippedTriangles.push_back(triangles[i]);
-        }
+      // CASE ALL VERTICES ARE IN THE PLANE
+      if (triangles[i].v0.x <= dot[0] && triangles[i].v1.x <= dot[1] && triangles[i].v2.x <= dot[2]) {
+        clippedTriangles.push_back(triangles[i]);
       }
-      break;
 
-    // Define top side y-plane
+      // CASE V0 IS IN
+      else if (triangles[i].v0.x <= dot[0] && triangles[i].v1.x > dot[1] && triangles[i].v2.x > dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (x0 - SCREEN_WIDTH/2*w0)/(SCREEN_WIDTH/2*w1 - SCREEN_WIDTH/2*w0 - x1 + x0);
+        float t_02 = (x0 - SCREEN_WIDTH/2*w0)/(SCREEN_WIDTH/2*w2 - SCREEN_WIDTH/2*w0 - x2 + x0);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        triangles[i].v2 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V1 IS IN
+      else if (triangles[i].v0.x > dot[0] && triangles[i].v1.x <= dot[1] && triangles[i].v2.x > dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (x1 - SCREEN_WIDTH/2*w1)/(SCREEN_WIDTH/2*w0 - SCREEN_WIDTH/2*w1 - x0 + x1);
+        float t_12 = (x1 - SCREEN_WIDTH/2*w1)/(SCREEN_WIDTH/2*w2 - SCREEN_WIDTH/2*w1 - x2 + x1);
+
+        // Set new vertex positions.
+        triangles[i].v0 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        triangles[i].v2 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V2 IS IN
+      else if (triangles[i].v0.x > dot[0] && triangles[i].v1.x > dot[1] && triangles[i].v2.x <= dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_21 = (x2 - SCREEN_WIDTH/2*w2)/(SCREEN_WIDTH/2*w1 - SCREEN_WIDTH/2*w2 - x1 + x2);
+        float t_20 = (x2 - SCREEN_WIDTH/2*w2)/(SCREEN_WIDTH/2*w0 - SCREEN_WIDTH/2*w2 - x0 + x2);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+        triangles[i].v0 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+              /* WHEN 2 VERTICES ARE INSIDE, SPLIT INTO 2 TRIANGLES */
+
+      // CASE V0 AND V1 ARE IN
+      else if (triangles[i].v0.x <= dot[0] && triangles[i].v1.x <= dot[1] && triangles[i].v2.x > dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_12 = (x1 - SCREEN_WIDTH/2*w1)/(SCREEN_WIDTH/2*w2 - SCREEN_WIDTH/2*w1 - x2 + x1);
+        float t_02 = (x0 - SCREEN_WIDTH/2*w0)/(SCREEN_WIDTH/2*w2 - SCREEN_WIDTH/2*w0 - x2 + x0);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_12;
+        vec4 newPoint_02;
+        newPoint_12 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+        newPoint_02 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v2 = newPoint_02;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V0 AND V2 ARE IN
+      else if (triangles[i].v0.x <= dot[0] && triangles[i].v1.x > dot[1] && triangles[i].v2.x <= dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (x0 - SCREEN_WIDTH/2*w0)/(SCREEN_WIDTH/2*w1 - SCREEN_WIDTH/2*w0 - x1 + x0);
+        float t_21 = (x2 - SCREEN_WIDTH/2*w2)/(SCREEN_WIDTH/2*w1 - SCREEN_WIDTH/2*w2 - x1 + x2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_01;
+        vec4 newPoint_21;
+        newPoint_01 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        newPoint_21 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v1 = newPoint_01;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V1 AND V2 ARE IN
+      else if (triangles[i].v0.x > dot[0] && triangles[i].v1.x <= dot[1] && triangles[i].v2.x <= dot[2]) {
+        // Get all x and w values.
+        float x0 = triangles[i].v0.x;
+        float x1 = triangles[i].v1.x;
+        float x2 = triangles[i].v2.x;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (x1 - SCREEN_WIDTH/2*w1)/(SCREEN_WIDTH/2*w0 - SCREEN_WIDTH/2*w1 - x0 + x1);
+        float t_20 = (x2 - SCREEN_WIDTH/2*w2)/(SCREEN_WIDTH/2*w0 - SCREEN_WIDTH/2*w2 - x0 + x2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_10;
+        vec4 newPoint_20;
+        newPoint_10 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        newPoint_20 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v0 = newPoint_10;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+    }
+    break;
+
+    // Clip at bottom side y-plane
     case 3:
-      for (int i = 0; i < triangles.size(); ++i) {
-        dot[0] = triangles[i].v0.w*128; // (128 = SCREEN_HEIGHT/2)
-        dot[1] = triangles[i].v1.w*128;
-        dot[2] = triangles[i].v2.w*128;
+    for (int i = 0; i < triangles.size(); ++i) {
+      dot[0] = triangles[i].v0.w * SCREEN_HEIGHT/2;
+      dot[1] = triangles[i].v1.w * SCREEN_HEIGHT/2;
+      dot[2] = triangles[i].v2.w * SCREEN_HEIGHT/2;
 
-        if (triangles[i].v0.y <= dot[0] && triangles[i].v1.y <= dot[1] && triangles[i].v2.y <= dot[2]) {
-          clippedTriangles.push_back(triangles[i]);
-        }
+      // CASE ALL VERTICES ARE IN THE PLANE
+      if (triangles[i].v0.y <= dot[0] && triangles[i].v1.y <= dot[1] && triangles[i].v2.y <= dot[2]) {
+        clippedTriangles.push_back(triangles[i]);
       }
-      break;
 
-    // Define bottom side y-plane
+      // CASE V0 IS IN
+      else if (triangles[i].v0.y <= dot[0] && triangles[i].v1.y > dot[1] && triangles[i].v2.y > dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (y0 - SCREEN_HEIGHT/2*w0)/(SCREEN_HEIGHT/2*w1 - SCREEN_HEIGHT/2*w0 - y1 + y0);
+        float t_02 = (y0 - SCREEN_HEIGHT/2*w0)/(SCREEN_HEIGHT/2*w2 - SCREEN_HEIGHT/2*w0 - y2 + y0);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        triangles[i].v2 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V1 IS IN
+      else if (triangles[i].v0.y > dot[0] && triangles[i].v1.y <= dot[1] && triangles[i].v2.y > dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (y1 - SCREEN_HEIGHT/2*w1)/(SCREEN_HEIGHT/2*w0 - SCREEN_HEIGHT/2*w1 - y0 + y1);
+        float t_12 = (y1 - SCREEN_HEIGHT/2*w1)/(SCREEN_HEIGHT/2*w2 - SCREEN_HEIGHT/2*w1 - y2 + y1);
+
+        // Set new vertex positions.
+        triangles[i].v0 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        triangles[i].v2 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V2 IS IN
+      else if (triangles[i].v0.y > dot[0] && triangles[i].v1.y > dot[1] && triangles[i].v2.y <= dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_21 = (y2 - SCREEN_HEIGHT/2*w2)/(SCREEN_HEIGHT/2*w1 - SCREEN_HEIGHT/2*w2 - y1 + y2);
+        float t_20 = (y2 - SCREEN_HEIGHT/2*w2)/(SCREEN_HEIGHT/2*w0 - SCREEN_HEIGHT/2*w2 - y0 + y2);
+
+        triangles[i].v1 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+        triangles[i].v0 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+              /* WHEN 2 VERTICES ARE INSIDE, SPLIT INTO 2 TRIANGLES */
+
+      // CASE V0 AND V1 ARE IN
+      else if (triangles[i].v0.y <= dot[0] && triangles[i].v1.y <= dot[1] && triangles[i].v2.y > dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_12 = (y1 - SCREEN_HEIGHT/2*w1)/(SCREEN_HEIGHT/2*w2 - SCREEN_HEIGHT/2*w1 - y2 + y1);
+        float t_02 = (y0 - SCREEN_HEIGHT/2*w0)/(SCREEN_HEIGHT/2*w2 - SCREEN_HEIGHT/2*w0 - y2 + y0);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_12;
+        vec4 newPoint_02;
+        newPoint_12 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+        newPoint_02 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v2 = newPoint_02;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V0 AND V2 ARE IN
+      else if (triangles[i].v0.y <= dot[0] && triangles[i].v1.y > dot[1] && triangles[i].v2.y <= dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (y0 - SCREEN_HEIGHT/2*w0)/(SCREEN_HEIGHT/2*w1 - SCREEN_HEIGHT/2*w0 - y1 + y0);
+        float t_21 = (y2 - SCREEN_HEIGHT/2*w2)/(SCREEN_HEIGHT/2*w1 - SCREEN_HEIGHT/2*w2 - y1 + y2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_01;
+        vec4 newPoint_21;
+        newPoint_01 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        newPoint_21 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v1 = newPoint_01;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V1 AND V2 ARE IN
+      else if (triangles[i].v0.y > dot[0] && triangles[i].v1.y <= dot[1] && triangles[i].v2.y <= dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (y1 - SCREEN_HEIGHT/2*w1)/(SCREEN_HEIGHT/2*w0 - SCREEN_HEIGHT/2*w1 - y0 + y1);
+        float t_20 = (y2 - SCREEN_HEIGHT/2*w2)/(SCREEN_HEIGHT/2*w0 - SCREEN_HEIGHT/2*w2 - y0 + y2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_10;
+        vec4 newPoint_20;
+        newPoint_10 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        newPoint_20 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v0 = newPoint_10;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+    }
+    break;
+
+    // Clip at top side y-plane
     case 4:
-      for (int i = 0; i < triangles.size(); ++i) {
-        dot[0] = -triangles[i].v0.w*128; // (128 = SCREEN_HEIGHT/2)
-        dot[1] = -triangles[i].v1.w*128;
-        dot[2] = -triangles[i].v2.w*128;
+    for (int i = 0; i < triangles.size(); ++i) {
+      dot[0] = triangles[i].v0.w * -SCREEN_HEIGHT/2;
+      dot[1] = triangles[i].v1.w * -SCREEN_HEIGHT/2;
+      dot[2] = triangles[i].v2.w * -SCREEN_HEIGHT/2;
 
-        if (triangles[i].v0.y >= dot[0] && triangles[i].v1.y >= dot[1] && triangles[i].v2.y >= dot[2]) {
-          clippedTriangles.push_back(triangles[i]);
-        }
+      // CASE ALL VERTICES ARE IN THE PLANE
+      if (triangles[i].v0.y >= dot[0] && triangles[i].v1.y >= dot[1] && triangles[i].v2.y >= dot[2]) {
+        clippedTriangles.push_back(triangles[i]);
       }
-      break;
+
+      // CASE V0 IS IN
+      else if (triangles[i].v0.y >= dot[0] && triangles[i].v1.y < dot[1] && triangles[i].v2.y < dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (y0 + SCREEN_HEIGHT/2*w0)/(-SCREEN_HEIGHT/2*w1 + SCREEN_HEIGHT/2*w0 - y1 + y0);
+        float t_02 = (y0 + SCREEN_HEIGHT/2*w0)/(-SCREEN_HEIGHT/2*w2 + SCREEN_HEIGHT/2*w0 - y2 + y0);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        triangles[i].v2 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V1 IS IN
+      else if (triangles[i].v0.y < dot[0] && triangles[i].v1.y >= dot[1] && triangles[i].v2.y < dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (y1 + SCREEN_HEIGHT/2*w1)/(-SCREEN_HEIGHT/2*w0 + SCREEN_HEIGHT/2*w1 - y0 + y1);
+        float t_12 = (y1 + SCREEN_HEIGHT/2*w1)/(-SCREEN_HEIGHT/2*w2 + SCREEN_HEIGHT/2*w1 - y2 + y1);
+
+        // Set new vertex positions.
+        triangles[i].v0 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        triangles[i].v2 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V2 IS IN
+      else if (triangles[i].v0.y < dot[0] && triangles[i].v1.y < dot[1] && triangles[i].v2.y >= dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_21 = (y2 + SCREEN_HEIGHT/2*w2)/(-SCREEN_HEIGHT/2*w1 + SCREEN_HEIGHT/2*w2 - y1 + y2);
+        float t_20 = (y2 + SCREEN_HEIGHT/2*w2)/(-SCREEN_HEIGHT/2*w0 + SCREEN_HEIGHT/2*w2 - y0 + y2);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+        triangles[i].v0 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+              /* WHEN 2 VERTICES ARE INSIDE, SPLIT INTO 2 TRIANGLES */
+
+      // CASE V0 AND V1 ARE IN
+      else if (triangles[i].v0.y >= dot[0] && triangles[i].v1.y >= dot[1] && triangles[i].v2.y < dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_12 = (y1 + SCREEN_HEIGHT/2*w1)/(-SCREEN_HEIGHT/2*w2 + SCREEN_HEIGHT/2*w1 - y2 + y1);
+        float t_02 = (y0 + SCREEN_HEIGHT/2*w0)/(-SCREEN_HEIGHT/2*w2 + SCREEN_HEIGHT/2*w0 - y2 + y0);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_12;
+        vec4 newPoint_02;
+        newPoint_12 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+        newPoint_02 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v2 = newPoint_02;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V0 AND V2 ARE IN
+      else if (triangles[i].v0.y >= dot[0] && triangles[i].v1.y < dot[1] && triangles[i].v2.y >= dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (y0 + SCREEN_HEIGHT/2*w0)/(-SCREEN_HEIGHT/2*w1 + SCREEN_HEIGHT/2*w0 - y1 + y0);
+        float t_21 = (y2 + SCREEN_HEIGHT/2*w2)/(-SCREEN_HEIGHT/2*w1 + SCREEN_HEIGHT/2*w2 - y1 + y2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_01;
+        vec4 newPoint_21;
+        newPoint_01 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        newPoint_21 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v1 = newPoint_01;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V1 AND V2 ARE IN
+      else if (triangles[i].v0.y < dot[0] && triangles[i].v1.y >= dot[1] && triangles[i].v2.y >= dot[2]) {
+        // Get all x and w values.
+        float y0 = triangles[i].v0.y;
+        float y1 = triangles[i].v1.y;
+        float y2 = triangles[i].v2.y;
+
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (y1 + SCREEN_HEIGHT/2*w1)/(-SCREEN_HEIGHT/2*w0 + SCREEN_HEIGHT/2*w1 - y0 + y1);
+        float t_20 = (y2 + SCREEN_HEIGHT/2*w2)/(-SCREEN_HEIGHT/2*w0 + SCREEN_HEIGHT/2*w2 - y0 + y2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_10;
+        vec4 newPoint_20;
+        newPoint_10 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        newPoint_20 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v0 = newPoint_10;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+    }
+    break;
+
+    // Clip at z plane at current camera position (anything behind the camera)
+    case 5:
+    for (int i = 0; i < triangles.size(); ++i) {
+
+      // CASE ALL VERTICES ARE IN THE PLANE
+      if (triangles[i].v0.w > 0 && triangles[i].v1.w > 0 && triangles[i].v2.w > 0) {
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V0 IS IN
+      else if (triangles[i].v0.w > 0 && triangles[i].v1.w <= 0 && triangles[i].v2.w <= 0) {
+        // Get w values.
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (-w0)/(w1 - w0);
+        float t_02 = (-w0)/(w2 - w0);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        triangles[i].v2 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V1 IS IN
+      else if (triangles[i].v0.w <= 0 && triangles[i].v1.w > 0 && triangles[i].v2.w <= 0) {
+        // Get w values.
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (-w1)/(w0 - w1);
+        float t_12 = (-w1)/(w2 - w1);
+
+        // Set new vertex positions.
+        triangles[i].v0 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        triangles[i].v2 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+
+      // CASE V2 IS IN
+      else if (triangles[i].v0.w <= 0 && triangles[i].v1.w <= 0 && triangles[i].v2.w > 0) {
+        // Get w values.
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_21 = (-w2)/(w1 - w2);
+        float t_20 = (-w2)/(w0 - w2);
+
+        // Set new vertex positions.
+        triangles[i].v1 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+        triangles[i].v0 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Add new triangle to vector.
+        clippedTriangles.push_back(triangles[i]);
+      }
+              /* WHEN 2 VERTICES ARE INSIDE, SPLIT INTO 2 TRIANGLES */
+
+      // CASE V0 AND V1 ARE IN
+      else if (triangles[i].v0.w > 0 && triangles[i].v1.w > 0 && triangles[i].v2.w <= 0) {
+        // Get w values.
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_12 = (-w1)/(w2 - w1);
+        float t_02 = (-w0)/(w2 - w0);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_12;
+        vec4 newPoint_02;
+        newPoint_12 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
+        newPoint_02 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v2 = newPoint_02;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V0 AND V2 ARE IN
+      else if (triangles[i].v0.w > 0 && triangles[i].v1.w <= 0 && triangles[i].v2.x > 0) {
+        // Get w values.
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_01 = (-w0)/(w1 - w0);
+        float t_21 = (-w2)/(w1 - w2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_01;
+        vec4 newPoint_21;
+        newPoint_01 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
+        newPoint_21 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v1 = newPoint_01;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+
+      // CASE V1 AND V2 ARE IN
+      else if (triangles[i].v0.w <= 0 && triangles[i].v1.w > 0 && triangles[i].v2.w > 0) {
+        // Get w values.
+        float w0 = triangles[i].v0.w;
+        float w1 = triangles[i].v1.w;
+        float w2 = triangles[i].v2.w;
+
+        // Calculate the line intersection with the plane to change vertex positions within the plane.
+        float t_10 = (-w1)/(w0 - w1);
+        float t_20 = (-w2)/(w0 - w2);
+
+        // Store new calculated vertices here.
+        vec4 newPoint_10;
+        vec4 newPoint_20;
+        newPoint_10 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
+        newPoint_20 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
+
+        // Set outside vertex to one of the new vertices.
+        triangles[i].v0 = newPoint_10;
+
+        // Create a new triangle with the new vertices and one of the inside vertex.
+        // Set the normals to be the same.
+        Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
+        extraTriangle.normal = triangles[i].normal;
+
+        // Add the new triangles to vector.
+        clippedTriangles.push_back(triangles[i]);
+        clippedTriangles.push_back(extraTriangle);
+      }
+    }
+    break;
   }
   return clippedTriangles;
 }
