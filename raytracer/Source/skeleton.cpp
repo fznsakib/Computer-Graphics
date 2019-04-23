@@ -285,27 +285,53 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
       vec3 e1 = vec3(v1.x - v0.x ,v1.y - v0.y,v1.z - v0.z);
       vec3 e2 = vec3(v2.x - v0.x ,v2.y - v0.y,v2.z - v0.z);
-      vec3 b = vec3(start.x-v0.x, start.y-v0.y, start.z-v0.z);
+      // vec3 b = vec3(start.x-v0.x, start.y-v0.y, start.z-v0.z);
 
-      // bottleneck
-      // glm::mat3 A;
+      // Currently: 55000ms without -O3, 600ms with -O3
+      // With Cramer's rule: 47000ms without -O3, 430ms with -O3
       vec3 dir3 = vec3(dir[0], dir[1], dir[2]);
-      glm::mat3 A( -dir3, e1, e2 );
+      glm::mat3 system( -dir3, e1, e2 );
 
-      vec3 x = glm::inverse( A ) * b;
+      // Use Cramer's rule to produce just t (x[0]). If t is negative, then
+      // return false. Else, continue with calculation
 
-      // vec4 position = v0 + ue1 + ve2;
-      vec4 position = start + vec4(x[0] * dir3, 0);
-      float distance = x[0] * glm::length(dir3);
+      // Using the linear equation:
+      // (-dir, e1, e2) (t, u, v) = s - v0
+      vec4 solutions = start - v0;
+      vec3 solutions3 = vec3(solutions[0], solutions[1], solutions[2]);
 
-      bool check1 = x[1] >= 0;
-      bool check2 = x[2] >= 0;
-      bool check3 = (x[1] + x[2]) <= 1;
-      bool check4 = x[0] >= 0;
-      bool check5 = distance < bound;
-      bool check6 = distance < closestIntersection.distance;
+      // Solving t in using Cramer's rule:
+      // -dir[0]t + e1[0]u + e2[0]v = solutions[0]
+      // -dir[1]t + e1[1]u + e2[1]v = solutions[0]
+      // -dir[2]t + e1[2]u + e2[2]v = solutions[0]
 
-      if ( check1 && check2 && check3 && check4 && check5 && check6 ) {
+      // Where t = det(system_t)/det(system)
+      glm::mat3 system_t( solutions3, e1, e2 );
+      float t = glm::determinant(system_t)/glm::determinant(system);
+      float distance = t * glm::length(dir3);
+
+
+      // If the distance is negative, the intersection does not occur, so carry on to the next one.
+      if (distance < 0.0f) continue;
+      // Do distance checks earlier to move on quicker if possible
+      else if (distance >= closestIntersection.distance || distance > bound) continue;
+
+
+      // Similar to t, calculate u and v
+      glm::mat3 system_u( -dir3, solutions3, e2 );
+      float u = glm::determinant(system_u)/glm::determinant(system);
+
+      glm::mat3 system_v( -dir3, e1, solutions3 );
+      float v = glm::determinant(system_v)/glm::determinant(system);
+
+      // x = (t, u, v)
+      // vec3 x = glm::inverse( system ) * b;
+
+      vec4 position = start + vec4(t * dir3, 0);
+
+      bool check = (u >= 0) && (v >= 0) && ((u + v) <= 1);
+
+      if (check) {
         closestIntersection.position = position;
         closestIntersection.distance = distance;
         closestIntersection.triangleIndex = i;
@@ -315,9 +341,7 @@ bool ClosestIntersection( vec4 start, vec4 dir,
     if ( closestIntersection.distance < bound ) {
         return true;
     }
-
-    else
-    {
+    else {
       return false;
     }
   }
