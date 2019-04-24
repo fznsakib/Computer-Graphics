@@ -6,21 +6,80 @@
 #include <glm/glm.hpp>
 #include <vector>
 
+using glm::vec3;
+using glm::vec4;
+
+
+// Used to describe a spherical surface:
+class Sphere
+{
+public:
+		Sphere(const vec3 &c, const float &r) : radius(r), radiusSquared(r * r), centre(c) {}
+
+		float radius, radiusSquared;
+		vec3 centre;
+
+		bool solveQuadratic(const float &a, const float &b, const float &c, float &x0, float &x1) const
+		{
+				// Check discriminant first to see how many solutions there are
+		    float discriminant = (b * b) - (4 * a * c);
+		    if (discriminant < 0) return false;
+		    else if (discriminant == 0) x0 = x1 = - 0.5 * b / a;
+		    else {
+					float q;
+					if (b > 0) q = -0.5 * (b + sqrt(discriminant));
+					else 			 q = -0.5 * (b - sqrt(discriminant));
+	        x0 = q / a;
+	        x1 = c / q;
+		    }
+		    if (x0 > x1) std::swap(x0, x1);
+
+		    return true;
+		}
+
+		// To compute the intersection of ray with a sphere
+    bool intersect(const vec3 &start, const vec3 &dir, float &t) const
+    {
+        float t0, t1; // solutions for t if the ray intersects
+
+				// Find variables to get solutions from quadratic equation
+				vec3 L = start - centre;
+        float a = glm::dot(dir, dir);
+        float b = 2 * glm::dot(dir, L);
+        float c = glm::dot(L, L) - radiusSquared;
+        if (!solveQuadratic(a, b, c, t0, t1)) return false;
+
+				if (t0 > t1) std::swap(t0, t1);
+
+				// If t0 is negative, there is only one root. Use t0 only then
+        if (t0 < 0) {
+            t0 = t1;
+						// If both t0 and t1 are negative, then there is no intersection
+            if (t0 < 0) return false;
+        }
+
+        t = t0;
+
+        return true;
+    }
+};
+
 // Used to describe a triangular surface:
 class Triangle
 {
 public:
-	glm::vec4 v0;
-	glm::vec4 v1;
-	glm::vec4 v2;
-	glm::vec4 normal;
-	glm::vec3 color;
 
 	Triangle( glm::vec4 v0, glm::vec4 v1, glm::vec4 v2, glm::vec3 color )
 		: v0(v0), v1(v1), v2(v2), color(color)
 	{
 		ComputeNormal();
 	}
+
+	glm::vec4 v0;
+	glm::vec4 v1;
+	glm::vec4 v2;
+	glm::vec4 normal;
+	glm::vec3 color;
 
 	void ComputeNormal()
 	{
@@ -32,14 +91,22 @@ public:
 	  normal.z = normal3.z;
 	  normal.w = 1.0;
 	}
+
+	// To compute the intersection of ray with a triangle
+	bool intersect(const vec3 &start, const vec3 &dir, float &t) const
+  {
+      // code to compute the intersection of a ray with triangle
+      return true;
+  }
 };
 
 // Loads the Cornell Box. It is scaled to fill the volume:
 // -1 <= x <= +1
 // -1 <= y <= +1
 // -1 <= z <= +1
-void LoadTestModel( std::vector<Triangle>& triangles )
+void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spheres  )
 {
+
 	using glm::vec3;
 	using glm::vec4;
 
@@ -184,6 +251,7 @@ void LoadTestModel( std::vector<Triangle>& triangles )
 
 		triangles[i].ComputeNormal();
 	}
+
 }
 
 #endif

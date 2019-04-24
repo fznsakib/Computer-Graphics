@@ -1,11 +1,12 @@
 #include <iostream>
 #include <glm/glm.hpp>
 #include <SDL.h>
-#include "SDLauxiliary.h"
-#include "TestModelH.h"
 #include <stdint.h>
 #include <limits.h>
 #include <math.h>
+
+#include "SDLauxiliary.h"
+#include "TestModelH.h"
 
 using namespace std;
 using glm::vec3;
@@ -18,6 +19,15 @@ SDL_Event event;
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 256
 #define FULLSCREEN_MODE false
+
+// Done
+// - Anti aliasing
+// - Cramer's rule
+
+// To do
+// - Load sphere
+// - Photon mapping
+// - Bump maps?
 
 /* ----------------------------------------------------------------------------*/
 /* STRUCTS                                                                   */
@@ -92,9 +102,11 @@ void Draw(screen* screen) {
   vec3 pixelColour = vec3( 1.0, 1.0, 1.0 );
   vec3 indirectLight = 0.5f * vec3(1, 1, 1);
 
-  // Initialise triangles
+  // Initialise triangles and spheres
   vector<Triangle> triangles;
-  LoadTestModel( triangles );
+  vector<Sphere> spheres;
+
+  LoadTestModel( triangles, spheres );
 
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {
