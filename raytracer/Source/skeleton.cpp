@@ -105,8 +105,13 @@ void Draw(screen* screen) {
   // Initialise triangles and spheres
   vector<Triangle> triangles;
   vector<Sphere> spheres;
+  vector<Object*> objects;
 
-  LoadTestModel( triangles, spheres );
+  LoadTestModel( triangles, spheres, objects );
+
+  // for (int i = 0; i < triangles.size(); i++) {
+  //   objects.push_back(std::unique_ptr<Object> (new Triangle(triangles[i].v0, triangles[i].v1, triangles[i].v2, triangles[i].color)));
+  // }
 
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {

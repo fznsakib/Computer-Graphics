@@ -9,9 +9,18 @@
 using glm::vec3;
 using glm::vec4;
 
+class Object
+{
+public:
+    // virtual intersect function, needs to be overloaded by derived class
+    virtual bool intersect(const vec3 &start, const vec3 &dir, float &t) const = 0;
+    virtual ~Object() {} // virtual destructor
+    Object() {} // constructor
+};
+
 
 // Used to describe a spherical surface:
-class Sphere
+class Sphere : public Object
 {
 public:
 		Sphere(const vec3 &c, const float &r) : radius(r), radiusSquared(r * r), centre(c) {}
@@ -65,7 +74,7 @@ public:
 };
 
 // Used to describe a triangular surface:
-class Triangle
+class Triangle : public Object
 {
 public:
 
@@ -92,11 +101,13 @@ public:
 	  normal.w = 1.0;
 	}
 
+
 	// To compute the intersection of ray with a triangle
 	bool intersect(const vec3 &start, const vec3 &dir, float &t) const
   {
       // code to compute the intersection of a ray with triangle
-      return true;
+			if (t< 0) return false;
+      else return true;
   }
 };
 
@@ -104,7 +115,7 @@ public:
 // -1 <= x <= +1
 // -1 <= y <= +1
 // -1 <= z <= +1
-void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spheres  )
+void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spheres, std::vector<Object*> objects )
 {
 
 	using glm::vec3;
@@ -124,6 +135,7 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 
 	// ---------------------------------------------------------------------------
 	// Room
+	// ---------------------------------------------------------------------------
 
 	float L = 555;			// Length of Cornell Box side.
 
@@ -190,6 +202,7 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	triangles.push_back( Triangle(G,F,E,red) );
 	triangles.push_back( Triangle(G,H,F,red) );
 
+
 	// ---------------------------------------------------------------------------
 	// Tall block
 
@@ -251,6 +264,20 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 
 		triangles[i].ComputeNormal();
 	}
+
+	for (int i = 0; i < triangles.size(); i++) {
+		Triangle t = triangles[i];
+		objects.push_back(new Triangle(t.v0, t.v1, t.v2, t.color));
+	}
+
+	// ----------------------------------------------
+	// Spheres
+
+	vec3 centre(100, 100, 100);
+  float radius = 10;
+	spheres.push_back(Sphere(centre, radius));
+  objects.push_back(new Sphere(centre, radius));
+
 
 }
 
