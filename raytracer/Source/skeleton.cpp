@@ -37,7 +37,8 @@ SDL_Event event;
 struct Intersection {
        vec4 position;
        float distance;
-       int index;
+       int triangleIndex;
+       int sphereIndex;
 };
 
 struct Light {
@@ -135,16 +136,21 @@ void Draw(screen* screen) {
           Intersection intersection;
           bool closestIntersection = ClosestIntersection(cameraPos, newDir, triangles, spheres, intersection);
 
-          // If light intersects with triangle then draw it
+          // If light intersects with object then draw it
           if (closestIntersection == true) {
             validRay = true;
+            vec3 objectColor;
+
+            // Check if intersection with triangle or sphere to get correct colour
+            if (intersection.triangleIndex != -1) objectColor = triangles[intersection.triangleIndex].color;
+            else objectColor = spheres[intersection.sphereIndex].color;
 
             for (int i = 0; i < lights.size(); i++) {
               pixelColour += DirectLight( intersection, triangles, spheres, lights[i] );
             }
 
             // Take into account indirect illumination
-            pixelColour = pixelColour + (triangles[intersection.index].color * indirectLight);
+            pixelColour = pixelColour + (objectColor * indirectLight);
           }
         }
       }
@@ -321,7 +327,8 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       if (check) {
         closestIntersection.position = position;
         closestIntersection.distance = distance;
-        closestIntersection.index = i;
+        closestIntersection.triangleIndex = i;
+        closestIntersection.sphereIndex = -1;
       }
     }
 
@@ -338,7 +345,8 @@ bool ClosestIntersection( vec4 start, vec4 dir,
         if (t < closestIntersection.distance) {
           closestIntersection.position = position;
           closestIntersection.distance = t; //Might be t * dir3 as above
-          closestIntersection.index = triangles.size() + i;
+          closestIntersection.triangleIndex = -1;
+          closestIntersection.sphereIndex = i;
         }
       }
     }
@@ -355,7 +363,7 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, const vector<Sphere>& spheres, Light light ) {
 
   vec3 power;
-  Triangle triangle = triangles[i.index];
+  Triangle triangle = triangles[i.triangleIndex];
   vec4 r = (light.position - i.position);
   float r_magnitude = sqrt(pow(r[0],2) + pow(r[1],2) + pow(r[2],2));
 
