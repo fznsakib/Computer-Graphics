@@ -9,18 +9,9 @@
 using glm::vec3;
 using glm::vec4;
 
-class Object
-{
-public:
-    // virtual intersect function, needs to be overloaded by derived class
-    virtual bool intersect(const vec3 &start, const vec3 &dir, float &t) const = 0;
-    virtual ~Object() {} // virtual destructor
-    Object() {} // constructor
-};
-
 
 // Used to describe a spherical surface:
-class Sphere : public Object
+class Sphere
 {
 public:
 		Sphere(const vec3 &c, const float &r) : radius(r), radiusSquared(r * r), centre(c) {}
@@ -74,7 +65,7 @@ public:
 };
 
 // Used to describe a triangular surface:
-class Triangle : public Object
+class Triangle
 {
 public:
 
@@ -115,7 +106,7 @@ public:
 // -1 <= x <= +1
 // -1 <= y <= +1
 // -1 <= z <= +1
-void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spheres, std::vector<Object*> objects )
+void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spheres )
 {
 
 	using glm::vec3;
@@ -265,10 +256,6 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 		triangles[i].ComputeNormal();
 	}
 
-	for (int i = 0; i < triangles.size(); i++) {
-		Triangle t = triangles[i];
-		objects.push_back(new Triangle(t.v0, t.v1, t.v2, t.color));
-	}
 
 	// ----------------------------------------------
 	// Spheres
@@ -276,8 +263,6 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec3 centre(100, 100, 100);
   float radius = 10;
 	spheres.push_back(Sphere(centre, radius));
-  objects.push_back(new Sphere(centre, radius));
-
 
 }
 

@@ -105,9 +105,8 @@ void Draw(screen* screen) {
   // Initialise triangles and spheres
   vector<Triangle> triangles;
   vector<Sphere> spheres;
-  vector<Object*> objects;
 
-  LoadTestModel( triangles, spheres, objects );
+  LoadTestModel( triangles, spheres );
 
   // for (int i = 0; i < triangles.size(); i++) {
   //   objects.push_back(std::unique_ptr<Object> (new Triangle(triangles[i].v0, triangles[i].v1, triangles[i].v2, triangles[i].color)));
