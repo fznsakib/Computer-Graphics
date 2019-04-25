@@ -14,10 +14,12 @@ using glm::vec4;
 class Sphere
 {
 public:
-		Sphere(const vec3 &c, const float &r) : radius(r), radiusSquared(r * r), centre(c) {}
+		Sphere(const vec3 &c, const float &r, const vec3 &color) :
+           radius(r), radiusSquared(r * r), centre(c), color(color) {}
 
 		float radius, radiusSquared;
-		vec3 centre;
+		vec3 centre, color, normal;
+    // vec4 normal;
 
 		bool solveQuadratic(const float &a, const float &b, const float &c, float &x0, float &x1) const
 		{
@@ -62,6 +64,16 @@ public:
 
         return true;
     }
+
+    void getNormal(const vec3 &position, vec3 &normal) const
+    {
+        // In this particular case, the normal is similar to a point on a unit sphere
+        // centred around the origin. We can thus use the normal coordinates to compute
+        // the spherical coordinates of where the ray hits the surface of the sphere
+        normal = position - centre;
+        normal = glm::normalize(normal);
+    }
+
 };
 
 // Used to describe a triangular surface:
@@ -260,9 +272,9 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	// ----------------------------------------------
 	// Spheres
 
-	vec3 centre(100, 100, 100);
-  float radius = 10;
-	spheres.push_back(Sphere(centre, radius));
+	vec3 centre(-0.45, 0.6, -0.6);
+  float radius = 0.3;
+	spheres.push_back(Sphere(centre, radius, red));
 
 }
 

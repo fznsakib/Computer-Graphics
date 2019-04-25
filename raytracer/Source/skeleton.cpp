@@ -27,6 +27,7 @@ SDL_Event event;
 // To do
 // - Load sphere
 // - Photon mapping
+// - Fix rotation
 // - Bump maps?
 
 /* ----------------------------------------------------------------------------*/
@@ -36,7 +37,7 @@ SDL_Event event;
 struct Intersection {
        vec4 position;
        float distance;
-       int triangleIndex;
+       int index;
 };
 
 struct Light {
@@ -143,7 +144,7 @@ void Draw(screen* screen) {
             }
 
             // Take into account indirect illumination
-            pixelColour = pixelColour + (triangles[intersection.triangleIndex].color * indirectLight);
+            pixelColour = pixelColour + (triangles[intersection.index].color * indirectLight);
           }
         }
       }
@@ -259,7 +260,12 @@ bool ClosestIntersection( vec4 start, vec4 dir,
     float bound = std::numeric_limits<float>::max();
 
     closestIntersection.distance = bound;
+    vec3 start3 = vec3(start[0], start[1], start[2]);
+    vec3 dir3 = vec3(dir[0], dir[1], dir[2]);
 
+    ///////////////
+    // TRIANGLES //
+    ///////////////
     for (int i = 0; i < triangles.size(); i++) {
       vec4 v0 = triangles[i].v0;
       vec4 v1 = triangles[i].v1;
@@ -271,7 +277,6 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
       // Currently: 55000ms without -O3, 600ms with -O3
       // With Cramer's rule: 47000ms without -O3, 430ms with -O3
-      vec3 dir3 = vec3(dir[0], dir[1], dir[2]);
       glm::mat3 system( -dir3, e1, e2 );
 
       // Use Cramer's rule to produce just t (x[0]). If t is negative, then
@@ -316,7 +321,25 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       if (check) {
         closestIntersection.position = position;
         closestIntersection.distance = distance;
-        closestIntersection.triangleIndex = i;
+        closestIntersection.index = i;
+      }
+    }
+
+    /////////////
+    // SPHERES //
+    /////////////
+    for (int i = 0; i < spheres.size(); i++) {
+      float t;
+      if (spheres[i].intersect(start3, dir3, t)) {
+        // Position of intersection
+        vec4 position = start + vec4(t * dir3, 0);
+
+        // Check if distance to sphere is closest
+        if (t < closestIntersection.distance) {
+          closestIntersection.position = position;
+          closestIntersection.distance = t; //Might be t * dir3 as above
+          closestIntersection.index = triangles.size() + i;
+        }
       }
     }
 
@@ -332,7 +355,7 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, const vector<Sphere>& spheres, Light light ) {
 
   vec3 power;
-  Triangle triangle = triangles[i.triangleIndex];
+  Triangle triangle = triangles[i.index];
   vec4 r = (light.position - i.position);
   float r_magnitude = sqrt(pow(r[0],2) + pow(r[1],2) + pow(r[2],2));
 
