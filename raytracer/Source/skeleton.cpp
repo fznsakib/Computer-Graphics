@@ -23,9 +23,10 @@ SDL_Event event;
 // Done
 // - Anti aliasing
 // - Cramer's rule
+// - Load sphere
 
 // To do
-// - Load sphere
+// - Clean up code
 // - Photon mapping
 // - Fix rotation
 // - Bump maps?
@@ -362,28 +363,42 @@ bool ClosestIntersection( vec4 start, vec4 dir,
 
 vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, const vector<Sphere>& spheres, Light light ) {
 
-  vec3 power;
-  Triangle triangle = triangles[i.triangleIndex];
+  vec3 power, objectColor;
+  vec4 normal;
   vec4 r = (light.position - i.position);
   float r_magnitude = sqrt(pow(r[0],2) + pow(r[1],2) + pow(r[2],2));
 
   vec4 direction = light.position - i.position;
+
+  // Check if object is triangle of sphere for normakl and colour
+  // Get normal and colour
+  if (i.triangleIndex != -1) {
+    objectColor = triangles[i.triangleIndex].color;
+    normal = triangles[i.triangleIndex].normal;
+  }
+  else {
+    objectColor = spheres[i.sphereIndex].color;
+    vec3 normal3;
+    spheres[i.sphereIndex].getNormal(vec3(i.position), normal3);
+
+    normal = vec4(normal3.x, normal3.y, normal3.z, 0);
+  }
 
   // Check for surface between triangle and light
   Intersection intersection;
 
   // Check if distance less than to light. Emit ray from a small distance off the surface
   // so that it doesn't intersect with itself
-  if (ClosestIntersection(i.position + (triangle.normal * 0.00001f), direction, triangles, spheres, intersection)) {
+  if (ClosestIntersection(i.position + (normal * 0.00001f), direction, triangles, spheres, intersection)) {
     if (intersection.distance < r_magnitude) {
       return vec3(0.0,0.0,0.0);
     }
   }
 
   vec3 normalisedDirection = glm::normalize(vec3(direction));
-  vec3 normal = vec3(triangle.normal);
+  vec3 normal3 = vec3(normal);
 
-  float a = glm::dot(normalisedDirection, normal);
+  float a = glm::dot(normalisedDirection, normal3);
   float b = 4 * M_PI;
 
   float surfaceArea = (b * pow(r_magnitude,2));
@@ -392,7 +407,7 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, cons
   if (a <= 0) a = 0.f;
 
   // Return power of direct illumination
-  power = (triangle.color * light.colour * a)/surfaceArea;
+  power = (objectColor * light.colour * a)/surfaceArea;
 
   return power;
 }
