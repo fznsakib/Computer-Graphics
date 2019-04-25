@@ -25,6 +25,8 @@ SDL_Event event;
 // - Cramer's rule
 // - Load sphere
 
+// 
+
 // To do
 // - Clean up code
 // - Photon mapping
