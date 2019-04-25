@@ -62,12 +62,14 @@ mat4 R(1.0f);
 
 bool Update();
 void Draw(screen* screen);
-bool ClosestIntersection(
-       vec4 start,
-       vec4 dir,
-       const vector<Triangle>& triangles,
-       Intersection& closestIntersection );
-vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Light light );
+bool ClosestIntersection(vec4 start, vec4 dir,
+                         const vector<Triangle>& triangles,
+                         const vector<Sphere>& spheres,
+                         Intersection& closestIntersection );
+vec3 DirectLight( const Intersection &i,
+                  const vector<Triangle>& triangles,
+                  const vector<Sphere>& spheres,
+                  Light light );
 
 
 int main( int argc, char* argv[] )
@@ -123,20 +125,21 @@ void Draw(screen* screen) {
       pixelColour = vec3 (0.0f, 0.0f, 0.0f);
       bool validRay = false;
 
+      // Trace multiple rays around each ray and average color for anti aliasing
       for (int i = -1; i <= 1; ++i) {
         for (int j = -1; j <= 1; ++j ) {
           float multiplier = 0.5;
           vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
 
           Intersection intersection;
-          bool closestIntersection = ClosestIntersection(cameraPos, newDir, triangles, intersection);
+          bool closestIntersection = ClosestIntersection(cameraPos, newDir, triangles, spheres, intersection);
 
           // If light intersects with triangle then draw it
           if (closestIntersection == true) {
             validRay = true;
 
             for (int i = 0; i < lights.size(); i++) {
-              pixelColour += DirectLight( intersection, triangles, lights[i] );
+              pixelColour += DirectLight( intersection, triangles, spheres, lights[i] );
             }
 
             // Take into account indirect illumination
@@ -247,46 +250,9 @@ bool Update() {
 }
 
 
-vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, Light light ) {
-
-  vec3 power;
-  Triangle triangle = triangles[i.triangleIndex];
-  vec4 r = (light.position - i.position);
-  float r_magnitude = sqrt(pow(r[0],2) + pow(r[1],2) + pow(r[2],2));
-
-  vec4 direction = light.position - i.position;
-
-  // Check for surface between triangle and light
-  Intersection intersection;
-
-  // Check if distance less than to light. Emit ray from a small distance off the surface
-  // so that it doesn't intersect with itself
-  if (ClosestIntersection(i.position + (triangle.normal * 0.00001f), direction, triangles, intersection)) {
-    if (intersection.distance < r_magnitude) {
-      return vec3(0.0,0.0,0.0);
-    }
-  }
-
-  vec3 normalisedDirection = glm::normalize(vec3(direction));
-  vec3 normal = vec3(triangle.normal);
-
-  float a = glm::dot(normalisedDirection, normal);
-  float b = 4 * M_PI;
-
-  float surfaceArea = (b * pow(r_magnitude,2));
-
-  // If light does not hit triangle
-  if (a <= 0) a = 0.f;
-
-  // Return power of direct illumination
-  power = (triangle.color * light.colour * a)/surfaceArea;
-
-  return power;
-}
-
-
 bool ClosestIntersection( vec4 start, vec4 dir,
                           const vector<Triangle>& triangles,
+                          const vector<Sphere>& spheres,
                           Intersection& closestIntersection ) {
 
     // Don't check for intersection for large t
@@ -361,3 +327,41 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       return false;
     }
   }
+
+
+vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, const vector<Sphere>& spheres, Light light ) {
+
+  vec3 power;
+  Triangle triangle = triangles[i.triangleIndex];
+  vec4 r = (light.position - i.position);
+  float r_magnitude = sqrt(pow(r[0],2) + pow(r[1],2) + pow(r[2],2));
+
+  vec4 direction = light.position - i.position;
+
+  // Check for surface between triangle and light
+  Intersection intersection;
+
+  // Check if distance less than to light. Emit ray from a small distance off the surface
+  // so that it doesn't intersect with itself
+  if (ClosestIntersection(i.position + (triangle.normal * 0.00001f), direction, triangles, spheres, intersection)) {
+    if (intersection.distance < r_magnitude) {
+      return vec3(0.0,0.0,0.0);
+    }
+  }
+
+  vec3 normalisedDirection = glm::normalize(vec3(direction));
+  vec3 normal = vec3(triangle.normal);
+
+  float a = glm::dot(normalisedDirection, normal);
+  float b = 4 * M_PI;
+
+  float surfaceArea = (b * pow(r_magnitude,2));
+
+  // If light does not hit triangle
+  if (a <= 0) a = 0.f;
+
+  // Return power of direct illumination
+  power = (triangle.color * light.colour * a)/surfaceArea;
+
+  return power;
+}
