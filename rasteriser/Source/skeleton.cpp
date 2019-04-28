@@ -28,8 +28,10 @@ vec4 cameraPos( 0, 0, -3.001, 1 );
 // float yaw = 0.0;
 // mat4 R(1.0f);
 vec3 currentColor;
-float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH]; // Stores depth information of screen pixels. This
-                                                // is stored as 1/z.
+// Stores depth information of screen pixels. This is stored as 1/z.
+float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+vec3 screenBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+
 
 // Initialise light variables
 vec4 lightPos(0, -0.5, 0, 1);
@@ -76,7 +78,8 @@ vec3 calculateIllumination( const Pixel& p, vec4 currentNormal );
 void toClipSpace( vector<Triangle>& v );
 vector<Triangle> clipZ( vector<Triangle> triangles );
 vector<Triangle> clip( vector<Triangle>& triangles, int plane );
-
+vector<Triangle> createShadowVolume( vector<Triangle>& triangles );
+void toCameraSpace(vector<Triangle>& triangles);
 
 int main( int argc, char* argv[] )
 {
@@ -121,13 +124,18 @@ void Draw(screen* screen)
   LoadTestModel( triangles );
   //std::vector<glm::ivec2> points;
 
+  // Transform triangles to camera space.
+  toCameraSpace(triangles);
+
+  vector<Triangle> shadowTriangles = createShadowVolume(triangles);
+
   // Transform triangles to clip space
-  toClipSpace(triangles);
+  toClipSpace(shadowTriangles);
 
   // Clip the list of triangles on all planes of the frustrum
   // 1: Left of camera  2: Right of camera  3: Bottom of camera  4: Top of camera
   // 5: Behind camera
-  vector<Triangle> clippedTriangles = clip(triangles, 1);
+  vector<Triangle> clippedTriangles = clip(shadowTriangles, 1);
   clippedTriangles = clip(clippedTriangles, 2);
   clippedTriangles = clip(clippedTriangles, 3);
   clippedTriangles = clip(clippedTriangles, 4);
@@ -139,6 +147,9 @@ void Draw(screen* screen)
 
   // Clear depth buffer.
   memset(depthBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(float));
+
+  // Clear screen buffer.
+  memset(screenBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(vec3));
 
   // Go through all clipped triangles
   for( uint32_t i=0; i<clippedTriangles.size(); ++i ) {
@@ -157,6 +168,14 @@ void Draw(screen* screen)
 
      // Draw and colour the triangles.
      DrawPolygon( screen, vertices );
+  }
+  for (int y = 1; y < SCREEN_HEIGHT-1; ++y) {
+    for (int x = 1; x < SCREEN_WIDTH-1; ++x) {
+      PutPixelSDL(screen, x, y, (screenBuffer[y][x] +
+        screenBuffer[y-1][x] + screenBuffer[y+1][x] + screenBuffer[y][x-1] +
+        screenBuffer[y][x+1] + screenBuffer[y-1][x-1] + screenBuffer[y+1][x+1] +
+        screenBuffer[y+1][x-1] + screenBuffer[y-1][x+1])/9.0f);
+    }
   }
 }
 
@@ -433,7 +452,8 @@ void PixelShader( const Pixel& p, screen* screen ) {
       switch (randColourSelect) {
         case 0:
         // Choose normal colour
-        PutPixelSDL( screen, x, y, currentColor * calculateIllumination(p, currentNormal) );
+        // PutPixelSDL( screen, x, y, currentColor * calculateIllumination(p, currentNormal) );
+        screenBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
         break;
         case 1:
         // Choose random colour
@@ -467,15 +487,23 @@ vec3 calculateIllumination(const Pixel& p, vec4 currentNormal) {
 /* THIS FUNCTION CONVERTS ALL TRIANGLE INFORMATION FROM 3D TO CLIP SPACE */
 void toClipSpace(vector<Triangle>& triangles) {
   for (int i = 0; i<triangles.size(); ++i) {
-    // Changing from world space to camera space.
-    triangles[i].v0 = triangles[i].v0 - cameraPos;
-    triangles[i].v1 = triangles[i].v1 - cameraPos;
-    triangles[i].v2 = triangles[i].v2 - cameraPos;
 
     // W = Z/f
     triangles[i].v0.w = triangles[i].v0.z/focalLength;
     triangles[i].v1.w = triangles[i].v1.z/focalLength;
     triangles[i].v2.w = triangles[i].v2.z/focalLength;
+  }
+}
+
+void toCameraSpace(vector<Triangle>& triangles) {
+  for (int i = 0; i<triangles.size(); ++i) {
+    // Changing from world space to camera space.
+    triangles[i].v0 = triangles[i].v0 - cameraPos;
+    triangles[i].v0.w = 1.0f;
+    triangles[i].v1 = triangles[i].v1 - cameraPos;
+    triangles[i].v1.w = 1.0f;
+    triangles[i].v2 = triangles[i].v2 - cameraPos;
+    triangles[i].v2.w = 1.0f;
   }
 }
 
@@ -1402,4 +1430,55 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
     break;
   }
   return clippedTriangles;
+}
+
+vector<Triangle> createShadowVolume( vector<Triangle>& triangles ) {
+  // Vector to store all triangles with their shadow volumes.
+  vector<Triangle> trianglesWithShadows;
+  // Store new vertices here.
+  vec4 n0, n1, n2;
+
+  for (int i = 0; i < triangles.size(); ++i) {
+    // Add original triangle.
+    trianglesWithShadows.push_back(triangles[i]);
+
+    // Original vertices.
+    vec4 v0 = triangles[i].v0;
+    vec4 v1 = triangles[i].v1;
+    vec4 v2 = triangles[i].v2;
+
+    n0 = (triangles[i].v0 - (lightPos-cameraPos)) * 100.0f;
+    n1 = (triangles[i].v1 - (lightPos-cameraPos)) * 100.0f;
+    n2 = (triangles[i].v2 - (lightPos-cameraPos)) * 100.0f;
+
+    Triangle shadowVolume0(v0, v1, v2, vec3(1.0f,1.0f,1.0f));
+    shadowVolume0.normal = triangles[i].normal;
+    Triangle shadowVolume1(n0, n1, n2, vec3(1.0f,1.0f,1.0f));
+    shadowVolume1.normal = triangles[i].normal;
+
+    Triangle shadowVolume2(v0, n0, v1, vec3(-1.0f,-1.0f,-1.0f));
+    Triangle shadowVolume3(n0, v1, n1, vec3(-1.0f,-1.0f,-1.0f));
+    Triangle shadowVolume4(v1, n1, v2, vec3(-1.0f,-1.0f,-1.0f));
+    Triangle shadowVolume5(n1, v2, n2, vec3(-1.0f,-1.0f,-1.0f));
+    Triangle shadowVolume6(v2, n2, v0, vec3(-1.0f,-1.0f,-1.0f));
+    Triangle shadowVolume7(n2, v0, n0, vec3(-1.0f,-1.0f,-1.0f));
+    shadowVolume2.ComputeNormal();
+    shadowVolume3.ComputeNormal();
+    shadowVolume4.ComputeNormal();
+    shadowVolume5.ComputeNormal();
+    shadowVolume6.ComputeNormal();
+    shadowVolume7.ComputeNormal();
+
+    // Add shadow triangle.
+    // trianglesWithShadows.push_back(shadowVolume0);
+    // trianglesWithShadows.push_back(shadowVolume1);
+    trianglesWithShadows.push_back(shadowVolume2);
+    trianglesWithShadows.push_back(shadowVolume3);
+    trianglesWithShadows.push_back(shadowVolume4);
+    trianglesWithShadows.push_back(shadowVolume5);
+    trianglesWithShadows.push_back(shadowVolume6);
+    trianglesWithShadows.push_back(shadowVolume7);
+  }
+
+  return trianglesWithShadows;
 }
