@@ -16,6 +16,7 @@ using glm::mat4;
 
 SDL_Event event;
 
+// Change to 1280 x 720 later
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 256
 #define FULLSCREEN_MODE false
@@ -24,11 +25,11 @@ SDL_Event event;
 // - Anti aliasing
 // - Cramer's rule
 // - Load sphere
-
+// - Clean up code
 
 // To do
-// - Clean up code
 // - Photon mapping
+// - Convert point light to area
 // - Fix rotation
 // - Bump maps?
 
@@ -74,6 +75,7 @@ vec3 DirectLight( const Intersection &i,
                   const vector<Triangle>& triangles,
                   const vector<Sphere>& spheres,
                   Light light );
+void PhotonEmission( const int noOfPhotons );
 
 
 int main( int argc, char* argv[] )
@@ -82,10 +84,14 @@ int main( int argc, char* argv[] )
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
 
   // Initialise lights
-  Light light1;
-  light1.position = vec4( 0, -0.5, -0.7, 1.0 );
-  light1.colour = vec3( 14.f * vec3( 1, 1, 1 ));
-  lights.push_back(light1);
+  Light light;
+  light.position = vec4( 0, -0.5, -0.7, 1.0 );
+  light.colour = vec3( 14.f * vec3( 1, 1, 1 ));
+  lights.push_back(light);
+
+  // Photon tracing pass before scene starts rendering
+  int noOfPhotons= 1000;
+  PhotonEmission(noOfPhotons);
 
   while ( Update())
     {
@@ -127,6 +133,7 @@ void Draw(screen* screen) {
       bool validRay = false;
 
       // Trace multiple rays around each ray and average color for anti aliasing
+      // Change to 4 x 4 later
       for (int i = -1; i <= 1; ++i) {
         for (int j = -1; j <= 1; ++j ) {
           float multiplier = 0.5;
@@ -366,4 +373,36 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, cons
   power = (objectColor * light.colour * a)/surfaceArea;
 
   return power;
+}
+
+
+float RandomFloat(float min, float max)
+{
+  float num = ((float) rand()) / (float) RAND_MAX;
+
+  float range = max - min;
+  return (num*range) + min;
+}
+
+void PhotonEmission( const int noOfPhotons ) {
+  int photonsEmitted = 0;
+  float x, y, z;
+
+  while (photonsEmitted < noOfPhotons) {
+    // Rejection sampling to find random photon direction
+    do {
+      x = RandomFloat(-1.0, 1.0);
+      y = RandomFloat(-1.0, 1.0);
+      z = RandomFloat(-1.0, 1.0);
+    } while ((x*x) + (y*y) + (z*z) > 1);
+
+    vec3 dir(x, y, z);
+
+    // Trace photon from light position in photon direction dir
+
+    photonsEmitted += 1;
+  }
+  // Scale power of stored photons
+  // photonPower = (lightPower/noOfPhotons) * (nOOfCellsWithObjects/totalNoOfCells)
+
 }

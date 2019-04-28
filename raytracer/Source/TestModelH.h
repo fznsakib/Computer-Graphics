@@ -181,6 +181,7 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec3 blue(   0.15f, 0.15f, 0.75f );
 	vec3 purple( 0.75f, 0.15f, 0.75f );
 	vec3 white(  0.75f, 0.75f, 0.75f );
+	vec3 beige(0.85f, 0.85f, 0.7f);
 
 	triangles.clear();
 	triangles.reserve( 5*2*3 );
