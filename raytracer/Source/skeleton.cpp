@@ -25,7 +25,6 @@ SDL_Event event;
 // - Anti aliasing
 // - Cramer's rule
 // - Load sphere
-// - Clean up code
 
 // To do
 // - Photon mapping
@@ -38,16 +37,27 @@ SDL_Event event;
 /* ----------------------------------------------------------------------------*/
 
 struct Intersection {
-       vec4 position;
-       float distance;
-       int triangleIndex;
-       int sphereIndex;
+   vec4 position;
+   float distance;
+   int triangleIndex;
+   int sphereIndex;
 };
 
 struct Light {
-      vec4 position;
-      vec3 colour;
+  vec4 position;
+  vec3 colour;
 };
+
+struct Photon {
+  vec3 position;
+  vec3 power;
+  float phi;
+  float theta;
+  bool flag;   //flag used in kdtree
+};
+
+// phi = 255 * (atan2(dy,dx)+PI) / (2*PI)
+// theta = 255 * acos(dx) / PI
 
 /* ----------------------------------------------------------------------------*/
 /* VARIABLES                                                                   */
@@ -58,6 +68,10 @@ vec4 cameraPos( 0.0, 0.0, -3.0, 1.0);
 vector<Light> lights;
 float yaw = 0.0;
 mat4 R(1.0f);
+
+vector<Photon> causticPhotonMap;
+vector<Photon> globalPhotonMap;
+vector<Photon> volumePhotonMap;
 
 
 /* ----------------------------------------------------------------------------*/
@@ -76,7 +90,7 @@ vec3 DirectLight( const Intersection &i,
                   const vector<Sphere>& spheres,
                   Light light );
 void PhotonEmission( const int noOfPhotons );
-
+float RandomFloat(float min, float max);
 
 int main( int argc, char* argv[] )
 {
@@ -333,7 +347,7 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, cons
 
   vec4 direction = light.position - i.position;
 
-  // Check if object is triangle of sphere for normakl and colour
+  // Check if object is triangle of sphere for normal and colour
   // Get normal and colour
   if (i.triangleIndex != -1) {
     objectColor = triangles[i.triangleIndex].color;
@@ -375,14 +389,9 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, cons
   return power;
 }
 
-
-float RandomFloat(float min, float max)
-{
-  float num = ((float) rand()) / (float) RAND_MAX;
-
-  float range = max - min;
-  return (num*range) + min;
-}
+// TODO
+// - Add properties to surfaces
+// - Trace photons
 
 void PhotonEmission( const int noOfPhotons ) {
   int photonsEmitted = 0;
@@ -403,6 +412,14 @@ void PhotonEmission( const int noOfPhotons ) {
     photonsEmitted += 1;
   }
   // Scale power of stored photons
-  // photonPower = (lightPower/noOfPhotons) * (nOOfCellsWithObjects/totalNoOfCells)
+  // photonPower = (lightPower/noOfPhotons)
 
+}
+
+
+float RandomFloat(float min, float max) {
+  float num = ((float) rand()) / (float) RAND_MAX;
+
+  float range = max - min;
+  return (num*range) + min;
 }
