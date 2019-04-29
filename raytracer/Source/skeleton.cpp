@@ -46,10 +46,12 @@ struct Intersection {
 struct Light {
   vec4 position;
   vec3 colour;
+  float power;
 };
 
 struct Photon {
   vec3 position;
+  vec3 direction;
   vec3 power;
   float phi;
   float theta;
@@ -69,6 +71,9 @@ vector<Light> lights;
 float yaw = 0.0;
 mat4 R(1.0f);
 
+vector<Triangle> triangles;
+vector<Sphere> spheres;
+
 vector<Photon> causticPhotonMap;
 vector<Photon> globalPhotonMap;
 vector<Photon> volumePhotonMap;
@@ -82,15 +87,12 @@ vector<Photon> volumePhotonMap;
 bool Update();
 void Draw(screen* screen);
 bool ClosestIntersection(vec4 start, vec4 dir,
-                         const vector<Triangle>& triangles,
-                         const vector<Sphere>& spheres,
                          Intersection& closestIntersection );
 vec3 DirectLight( const Intersection &i,
-                  const vector<Triangle>& triangles,
-                  const vector<Sphere>& spheres,
                   Light light );
 void PhotonEmission( const int noOfPhotons );
 float RandomFloat(float min, float max);
+void TracePhoton( Photon& photon );
 
 int main( int argc, char* argv[] )
 {
@@ -101,9 +103,13 @@ int main( int argc, char* argv[] )
   Light light;
   light.position = vec4( 0, -0.5, -0.7, 1.0 );
   light.colour = vec3( 14.f * vec3( 1, 1, 1 ));
+  light.power = 10.0f;
   lights.push_back(light);
 
-  // Photon tracing pass before scene starts rendering
+  // Initialise surfaces
+  LoadTestModel( triangles, spheres );
+
+  // Initialise photon map before scene rendering
   int noOfPhotons= 1000;
   PhotonEmission(noOfPhotons);
 
@@ -129,10 +135,10 @@ void Draw(screen* screen) {
   vec3 indirectLight = 0.5f * vec3(1, 1, 1);
 
   // Initialise triangles and spheres
-  vector<Triangle> triangles;
-  vector<Sphere> spheres;
-
-  LoadTestModel( triangles, spheres );
+  // vector<Triangle> triangles;
+  // vector<Sphere> spheres;
+  //
+  // LoadTestModel( triangles, spheres );
 
 
   // u and v are coordinates on the 2D screen
@@ -150,11 +156,12 @@ void Draw(screen* screen) {
       // Change to 4 x 4 later
       for (int i = -1; i <= 1; ++i) {
         for (int j = -1; j <= 1; ++j ) {
+          // Multiply i and j by distance to surrounding rays being used
           float multiplier = 0.5;
           vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
 
           Intersection intersection;
-          bool closestIntersection = ClosestIntersection(cameraPos, newDir, triangles, spheres, intersection);
+          bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection);
 
           // If light intersects with object then draw it
           if (closestIntersection == true) {
@@ -166,7 +173,7 @@ void Draw(screen* screen) {
             else objectColor = spheres[intersection.sphereIndex].color;
 
             for (int i = 0; i < lights.size(); i++) {
-              pixelColour += DirectLight( intersection, triangles, spheres, lights[i] );
+              pixelColour += DirectLight( intersection, lights[i] );
             }
 
             // Take into account indirect illumination
@@ -278,8 +285,6 @@ bool Update() {
 
 
 bool ClosestIntersection( vec4 start, vec4 dir,
-                          const vector<Triangle>& triangles,
-                          const vector<Sphere>& spheres,
                           Intersection& closestIntersection ) {
 
     // Don't check for intersection for large t
@@ -338,7 +343,7 @@ bool ClosestIntersection( vec4 start, vec4 dir,
   }
 
 
-vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, const vector<Sphere>& spheres, Light light ) {
+vec3 DirectLight( const Intersection &i, Light light ) {
 
   vec3 power, objectColor;
   vec4 normal;
@@ -366,7 +371,7 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, cons
 
   // Check if distance less than to light. Emit ray from a small distance off the surface
   // so that it doesn't intersect with itself
-  if (ClosestIntersection(i.position + (normal * 0.00001f), direction, triangles, spheres, intersection)) {
+  if (ClosestIntersection(i.position + (normal * 0.00001f), direction, intersection)) {
     if (intersection.distance < r_magnitude) {
       return vec3(0.0,0.0,0.0);
     }
@@ -390,14 +395,16 @@ vec3 DirectLight( const Intersection &i, const vector<Triangle>& triangles, cons
 }
 
 // TODO
-// - Add properties to surfaces
 // - Trace photons
 
 void PhotonEmission( const int noOfPhotons ) {
   int photonsEmitted = 0;
   float x, y, z;
 
+  // Keep emitting photons until max number reached
   while (photonsEmitted < noOfPhotons) {
+    Photon photon;
+
     // Rejection sampling to find random photon direction
     do {
       x = RandomFloat(-1.0, 1.0);
@@ -405,16 +412,23 @@ void PhotonEmission( const int noOfPhotons ) {
       z = RandomFloat(-1.0, 1.0);
     } while ((x*x) + (y*y) + (z*z) > 1);
 
-    vec3 dir(x, y, z);
+    // Change to square light later
+    photon.position = vec3(lights[0].position);
+    photon.direction = vec3(x, y, z);
+    photon.power = lights[0].colour / (float)noOfPhotons;
 
     // Trace photon from light position in photon direction dir
+    TracePhoton(photon);
 
     photonsEmitted += 1;
   }
-  // Scale power of stored photons
-  // photonPower = (lightPower/noOfPhotons)
+}
+
+
+void TracePhoton(Photon &photon) {
 
 }
+
 
 
 float RandomFloat(float min, float max) {
