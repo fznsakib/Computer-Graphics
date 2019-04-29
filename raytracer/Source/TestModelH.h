@@ -65,13 +65,15 @@ public:
         return true;
     }
 
-    void getNormal(const vec3 &position, vec3 &normal) const
+    void getNormal(const vec3 &position, vec4 &normal) const
     {
         // In this particular case, the normal is similar to a point on a unit sphere
         // centred around the origin. We can thus use the normal coordinates to compute
         // the spherical coordinates of where the ray hits the surface of the sphere
-        normal = position - centre;
-        normal = glm::normalize(normal);
+				vec3 normal3 = position - centre;
+				normal3 = glm::normalize(normal3);
+
+        normal = vec4(normal3.x, normal3.y, normal3.z, 1.0f);
     }
 
 };
@@ -186,8 +188,8 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 
 	// Define material:
 	// Material = (ambient, diffuse, specular)
-	vec3 matte(0.0f, 1.0f, 0.0f);
-	vec3 shiny(0.0f, 0.0f, 1.0f);
+	vec3 matte(0.0f, 0.7f, 0.1f);
+	vec3 shiny(0.0f, 0.05f, 0.9f);
 
 
 	triangles.clear();

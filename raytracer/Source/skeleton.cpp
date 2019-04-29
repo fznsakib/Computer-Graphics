@@ -39,6 +39,9 @@ SDL_Event event;
 struct Intersection {
    vec4 position;
    float distance;
+   vec4 normal;
+   vec3 colour;
+   vec3 material;
    int triangleIndex;
    int sphereIndex;
 };
@@ -50,8 +53,8 @@ struct Light {
 };
 
 struct Photon {
-  vec3 position;
-  vec3 direction;
+  vec4 position;
+  vec4 direction;
   vec3 power;
   float phi;
   float theta;
@@ -86,13 +89,13 @@ vector<Photon> volumePhotonMap;
 
 bool Update();
 void Draw(screen* screen);
-bool ClosestIntersection(vec4 start, vec4 dir,
-                         Intersection& closestIntersection );
-vec3 DirectLight( const Intersection &i,
-                  Light light );
+bool ClosestIntersection(vec4 start, vec4 dir, Intersection& closestIntersection );
+vec3 DirectLight( const Intersection &i, Light light );
 void PhotonEmission( const int noOfPhotons );
-float RandomFloat(float min, float max);
 void TracePhoton( Photon& photon );
+void GetReflectedDirection(const vec3& incident, const vec3& normal, vec3& reflected);
+float RandomFloat(float min, float max);
+
 
 int main( int argc, char* argv[] )
 {
@@ -308,6 +311,9 @@ bool ClosestIntersection( vec4 start, vec4 dir,
         if (t < closestIntersection.distance) {
           closestIntersection.position = position;
           closestIntersection.distance = t;
+          closestIntersection.normal = triangles[i].normal;
+          closestIntersection.colour = triangles[i].color;
+          closestIntersection.material = triangles[i].material;
           closestIntersection.triangleIndex = i;
           closestIntersection.sphereIndex = -1;
         }
@@ -327,6 +333,9 @@ bool ClosestIntersection( vec4 start, vec4 dir,
         if (t < closestIntersection.distance) {
           closestIntersection.position = position;
           closestIntersection.distance = t; //Might be t * dir3 as above
+          spheres[i].getNormal(vec3(position), closestIntersection.normal);
+          closestIntersection.colour = spheres[i].color;
+          closestIntersection.material = spheres[i].material;
           closestIntersection.triangleIndex = -1;
           closestIntersection.sphereIndex = i;
         }
@@ -352,19 +361,9 @@ vec3 DirectLight( const Intersection &i, Light light ) {
 
   vec4 direction = light.position - i.position;
 
-  // Check if object is triangle of sphere for normal and colour
   // Get normal and colour
-  if (i.triangleIndex != -1) {
-    objectColor = triangles[i.triangleIndex].color;
-    normal = triangles[i.triangleIndex].normal;
-  }
-  else {
-    objectColor = spheres[i.sphereIndex].color;
-    vec3 normal3;
-    spheres[i.sphereIndex].getNormal(vec3(i.position), normal3);
-
-    normal = vec4(normal3.x, normal3.y, normal3.z, 0);
-  }
+  objectColor = i.colour;
+  normal = i.normal;
 
   // Check for surface between triangle and light
   Intersection intersection;
@@ -413,8 +412,8 @@ void PhotonEmission( const int noOfPhotons ) {
     } while ((x*x) + (y*y) + (z*z) > 1);
 
     // Change to square light later
-    photon.position = vec3(lights[0].position);
-    photon.direction = vec3(x, y, z);
+    photon.position = vec4(lights[0].position.x, lights[0].position.y, lights[0].position.z, 1.0f);
+    photon.direction = vec4(x, y, z, 1.0);
     photon.power = lights[0].colour / (float)noOfPhotons;
 
     // Trace photon from light position in photon direction dir
@@ -426,9 +425,49 @@ void PhotonEmission( const int noOfPhotons ) {
 
 
 void TracePhoton(Photon &photon) {
+  // Keep bouncing photon until it reaches diffuse object
+  bool photonAbsorbed = false;
+  Intersection intersection;
 
+  while (photonAbsorbed == false) {
+    // Call ClosestIntersection to find next object to intersect with
+    ClosestIntersection(photon.position, photon.direction, intersection);
+
+    // Use Russian Roulette on material properties to decide to photon action
+    float random = RandomFloat(0.0f, 1.0f);
+
+    // Check specularity for reflection occurring
+    if (random < intersection.material[2]) {
+      // Reflect new photon
+    }
+    // Check specularity + diffuseness for transmission occurring
+    else if (random < (intersection.material[1] + intersection.material[2])) {
+      // Refract new photon
+    }
+    // Else absorb photon
+    else {
+      // Absorb photon
+      photonAbsorbed = true;
+    }
+
+
+  }
+
+  // Use Russian Roulette to decide to photon action
+  // Carry out photon action
+  // Decide which photon map to add photon to
+
+  // if(r< 0.2)
+  // reflect photon with power 2 W elseif(r < 0.5 )
+  //   transmit photon with power 2 W
+  // else
+  //   photon is absorbed
 }
 
+
+void GetReflectedDirection(const vec3& incident, const vec3& normal, vec3& reflected) {
+	reflected = incident - normal * (2 * glm::dot(incident, normal));
+}
 
 
 float RandomFloat(float min, float max) {
