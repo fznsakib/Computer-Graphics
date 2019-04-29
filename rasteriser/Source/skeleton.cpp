@@ -31,6 +31,7 @@ vec3 currentColor;
 // Stores depth information of screen pixels. This is stored as 1/z.
 float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 vec3 screenBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+int shadowBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 
 
 // Initialise light variables
@@ -44,6 +45,9 @@ vec3 currentReflectance;
 
 // Choose random colour or correct colour
 int randColourSelect = 0;
+
+// Store frames per second to print.
+int fps;
 
 struct Pixel
 {
@@ -121,21 +125,29 @@ int main( int argc, char* argv[] )
 void Draw(screen* screen)
 {
   vector<Triangle> triangles;
-  LoadTestModel( triangles );
+  vector<Triangle> boxes;
+  LoadTestModel( triangles, boxes );
   //std::vector<glm::ivec2> points;
 
   // Transform triangles to camera space.
   toCameraSpace(triangles);
+  toCameraSpace(boxes);
 
-  vector<Triangle> shadowTriangles = createShadowVolume(triangles);
+  // Take all subjects in the room and add shadows.
+   boxes = createShadowVolume(boxes);
+
+   // Add the shadowed boxes triangles to the main triangles vector.
+   for (int i = 0; i < boxes.size(); ++i) {
+     triangles.push_back(boxes[i]);
+   }
 
   // Transform triangles to clip space
-  toClipSpace(shadowTriangles);
+  toClipSpace(triangles);
 
   // Clip the list of triangles on all planes of the frustrum
   // 1: Left of camera  2: Right of camera  3: Bottom of camera  4: Top of camera
   // 5: Behind camera
-  vector<Triangle> clippedTriangles = clip(shadowTriangles, 1);
+  vector<Triangle> clippedTriangles = clip(triangles, 1);
   clippedTriangles = clip(clippedTriangles, 2);
   clippedTriangles = clip(clippedTriangles, 3);
   clippedTriangles = clip(clippedTriangles, 4);
@@ -150,6 +162,9 @@ void Draw(screen* screen)
 
   // Clear screen buffer.
   memset(screenBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(vec3));
+
+  // Clear shadow buffer.
+  memset(shadowBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(int));
 
   // Go through all clipped triangles
   for( uint32_t i=0; i<clippedTriangles.size(); ++i ) {
@@ -171,6 +186,9 @@ void Draw(screen* screen)
   }
   for (int y = 1; y < SCREEN_HEIGHT-1; ++y) {
     for (int x = 1; x < SCREEN_WIDTH-1; ++x) {
+      if (shadowBuffer[y][x] == 1) {
+        screenBuffer[y][x] -= vec3(0.3f, 0.3f, 0.3f);
+      }
       PutPixelSDL(screen, x, y, (screenBuffer[y][x] +
         screenBuffer[y-1][x] + screenBuffer[y+1][x] + screenBuffer[y][x-1] +
         screenBuffer[y][x+1] + screenBuffer[y-1][x-1] + screenBuffer[y+1][x+1] +
@@ -447,7 +465,7 @@ void PixelShader( const Pixel& p, screen* screen ) {
 
   // Draw on screen if it is closer to the camera, and choose colour.
   if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
-    if (p.zinv > depthBuffer[y][x]) {
+    if (p.zinv > depthBuffer[y][x] && currentColor.x >= 0) {
       depthBuffer[y][x] = p.zinv;
       switch (randColourSelect) {
         case 0:
@@ -457,13 +475,18 @@ void PixelShader( const Pixel& p, screen* screen ) {
         break;
         case 1:
         // Choose random colour
-        PutPixelSDL( screen, x, y, randColour * calculateIllumination(p, currentNormal) );
+        // PutPixelSDL( screen, x, y, randColour * calculateIllumination(p, currentNormal) );
+        screenBuffer[y][x] = randColour * calculateIllumination(p, currentNormal);
         break;
         case 2:
         // Choose nightVision
-        PutPixelSDL( screen, x, y, nightVision * calculateIllumination(p, currentNormal) );
+        // PutPixelSDL( screen, x, y, nightVision * calculateIllumination(p, currentNormal) );
+        screenBuffer[y][x] = nightVision * calculateIllumination(p, currentNormal);
         break;
       }
+    }
+    else if (p.zinv > depthBuffer[y][x] && currentColor.x < 0) {
+      shadowBuffer[y][x] = 1;
     }
   }
 }
@@ -1432,12 +1455,16 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
   return clippedTriangles;
 }
 
+/* THIS FUNCTION ADDS NEW POLYGONS TO SIMULATE SHADOWS */
 vector<Triangle> createShadowVolume( vector<Triangle>& triangles ) {
+
   // Vector to store all triangles with their shadow volumes.
   vector<Triangle> trianglesWithShadows;
+
   // Store new vertices here.
   vec4 n0, n1, n2;
 
+  // Go through the vector of triangles.
   for (int i = 0; i < triangles.size(); ++i) {
     // Add original triangle.
     trianglesWithShadows.push_back(triangles[i]);
@@ -1447,21 +1474,25 @@ vector<Triangle> createShadowVolume( vector<Triangle>& triangles ) {
     vec4 v1 = triangles[i].v1;
     vec4 v2 = triangles[i].v2;
 
-    n0 = (triangles[i].v0 - (lightPos-cameraPos)) * 100.0f;
-    n1 = (triangles[i].v1 - (lightPos-cameraPos)) * 100.0f;
-    n2 = (triangles[i].v2 - (lightPos-cameraPos)) * 100.0f;
+    // Calculate position of new vertices. (Light -> triangle vertex) * arbitrary number.
+    n0 = ((triangles[i].v0 - (lightPos-cameraPos)) * 100.0f) + vec4(0.01f, 0.01f, 0.01f, 0.01f/focalLength);
+    n1 = ((triangles[i].v1 - (lightPos-cameraPos)) * 100.0f) + vec4(0.01f, 0.01f, 0.01f, 0.01f/focalLength);
+    n2 = ((triangles[i].v2 - (lightPos-cameraPos)) * 100.0f) + vec4(0.01f, 0.01f, 0.01f, 0.01f/focalLength);
 
-    Triangle shadowVolume0(v0, v1, v2, vec3(1.0f,1.0f,1.0f));
-    shadowVolume0.normal = triangles[i].normal;
-    Triangle shadowVolume1(n0, n1, n2, vec3(1.0f,1.0f,1.0f));
-    shadowVolume1.normal = triangles[i].normal;
+    // Triangle shadowVolume0(v0, v1, v2, vec3(1.0f,1.0f,1.0f));
+    // shadowVolume0.normal = triangles[i].normal;
+    // Triangle shadowVolume1(n0, n1, n2, vec3(1.0f,1.0f,1.0f));
+    // shadowVolume1.normal = triangles[i].normal;
 
+    // Connect the vertices together to form triangles.
     Triangle shadowVolume2(v0, n0, v1, vec3(-1.0f,-1.0f,-1.0f));
     Triangle shadowVolume3(n0, v1, n1, vec3(-1.0f,-1.0f,-1.0f));
     Triangle shadowVolume4(v1, n1, v2, vec3(-1.0f,-1.0f,-1.0f));
     Triangle shadowVolume5(n1, v2, n2, vec3(-1.0f,-1.0f,-1.0f));
     Triangle shadowVolume6(v2, n2, v0, vec3(-1.0f,-1.0f,-1.0f));
     Triangle shadowVolume7(n2, v0, n0, vec3(-1.0f,-1.0f,-1.0f));
+
+    // Compute normals of all triangles.
     shadowVolume2.ComputeNormal();
     shadowVolume3.ComputeNormal();
     shadowVolume4.ComputeNormal();
@@ -1469,9 +1500,7 @@ vector<Triangle> createShadowVolume( vector<Triangle>& triangles ) {
     shadowVolume6.ComputeNormal();
     shadowVolume7.ComputeNormal();
 
-    // Add shadow triangle.
-    // trianglesWithShadows.push_back(shadowVolume0);
-    // trianglesWithShadows.push_back(shadowVolume1);
+    // Add shadow triangles to the vector.
     trianglesWithShadows.push_back(shadowVolume2);
     trianglesWithShadows.push_back(shadowVolume3);
     trianglesWithShadows.push_back(shadowVolume4);
