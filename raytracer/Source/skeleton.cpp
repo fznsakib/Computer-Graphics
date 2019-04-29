@@ -93,7 +93,7 @@ bool ClosestIntersection(vec4 start, vec4 dir, Intersection& closestIntersection
 vec3 DirectLight( const Intersection &i, Light light );
 void PhotonEmission( const int noOfPhotons );
 void TracePhoton( Photon& photon );
-void GetReflectedDirection(const vec3& incident, const vec3& normal, vec3& reflected);
+void GetReflectedDirection(const vec4& incident, const vec4& normal, vec4& reflected);
 float RandomFloat(float min, float max);
 
 
@@ -436,36 +436,40 @@ void TracePhoton(Photon &photon) {
     // Use Russian Roulette on material properties to decide to photon action
     float random = RandomFloat(0.0f, 1.0f);
 
-    // Check specularity for reflection occurring
+    // Check specularity for reflection occurring. Add photon for each intersection
     if (random < intersection.material[2]) {
-      // Reflect new photon
+      // Reflect photon with new position in new direction
+      photon.position = intersection.position;
+
+      globalPhotonMap.push_back(photon);
+
+      GetReflectedDirection(photon.direction, intersection.normal, photon.direction);
     }
+
+    // TODO - ADD FOR TRANSMISSION/REFRACTANCE
     // Check specularity + diffuseness for transmission occurring
-    else if (random < (intersection.material[1] + intersection.material[2])) {
-      // Refract new photon
-    }
+    // else if (random < (intersection.material[1] + intersection.material[2])) {
+    //   // Refract new photon
+    //   photon.position = intersection.position;
+    // }
+
     // Else absorb photon
     else {
-      // Absorb photon
+      photon.position = intersection.position;
+
+      globalPhotonMap.push_back(photon);
+
       photonAbsorbed = true;
     }
 
+    // Decide which photon map to add photon to
 
   }
 
-  // Use Russian Roulette to decide to photon action
-  // Carry out photon action
-  // Decide which photon map to add photon to
-
-  // if(r< 0.2)
-  // reflect photon with power 2 W elseif(r < 0.5 )
-  //   transmit photon with power 2 W
-  // else
-  //   photon is absorbed
 }
 
 
-void GetReflectedDirection(const vec3& incident, const vec3& normal, vec3& reflected) {
+void GetReflectedDirection(const vec4& incident, const vec4& normal, vec4& reflected) {
 	reflected = incident - normal * (2 * glm::dot(incident, normal));
 }
 

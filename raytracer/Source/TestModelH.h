@@ -188,7 +188,7 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 
 	// Define material:
 	// Material = (ambient, diffuse, specular)
-	vec3 matte(0.0f, 0.7f, 0.1f);
+	vec3 matte(0.0f, 0.9f, 0.1f);
 	vec3 shiny(0.0f, 0.05f, 0.9f);
 
 
