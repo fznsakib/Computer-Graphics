@@ -215,8 +215,8 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec4 H(0,L,L,1);
 
 	// Floor:
-	triangles.push_back( Triangle( C, B, A, green, matte ) );
-	triangles.push_back( Triangle( C, D, B, green, matte ) );
+	triangles.push_back( Triangle( C, B, A, white, matte ) );
+	triangles.push_back( Triangle( C, D, B, white, matte ) );
 
 	// Left wall
 	triangles.push_back( Triangle( A, E, C, purple, matte ) );
@@ -227,8 +227,8 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	triangles.push_back( Triangle( H, F, D, yellow, matte ) );
 
 	// Ceiling
-	triangles.push_back( Triangle( E, F, G, cyan, matte ) );
-	triangles.push_back( Triangle( F, H, G, cyan, matte ) );
+	triangles.push_back( Triangle( E, F, G, white, matte ) );
+	triangles.push_back( Triangle( F, H, G, white, matte ) );
 
 	// Back wall
 	triangles.push_back( Triangle( G, D, C, white, matte ) );
