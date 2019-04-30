@@ -248,24 +248,24 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	H = vec4( 82,165,225,1);
 
 	// Front
-	triangles.push_back( Triangle(E,B,A,red, chrome) );
-	triangles.push_back( Triangle(E,F,B,red, chrome) );
+	triangles.push_back( Triangle(E,B,A,red, matte) );
+	triangles.push_back( Triangle(E,F,B,red, matte) );
 
 	// Front
-	triangles.push_back( Triangle(F,D,B,red, chrome) );
-	triangles.push_back( Triangle(F,H,D,red, chrome) );
+	triangles.push_back( Triangle(F,D,B,red, matte) );
+	triangles.push_back( Triangle(F,H,D,red, matte) );
 
 	// BACK
-	triangles.push_back( Triangle(H,C,D,red, chrome) );
-	triangles.push_back( Triangle(H,G,C,red, chrome) );
+	triangles.push_back( Triangle(H,C,D,red, matte) );
+	triangles.push_back( Triangle(H,G,C,red, matte) );
 
 	// LEFT
-	triangles.push_back( Triangle(G,E,C,red, chrome) );
-	triangles.push_back( Triangle(E,A,C,red, chrome) );
+	triangles.push_back( Triangle(G,E,C,red, matte) );
+	triangles.push_back( Triangle(E,A,C,red, matte) );
 
 	// TOP
-	triangles.push_back( Triangle(G,F,E,red, chrome) );
-	triangles.push_back( Triangle(G,H,F,red, chrome) );
+	triangles.push_back( Triangle(G,F,E,red, matte) );
+	triangles.push_back( Triangle(G,H,F,red, matte) );
 
 
 	// ---------------------------------------------------------------------------

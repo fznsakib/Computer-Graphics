@@ -178,14 +178,14 @@ void Draw(screen* screen) {
             else objectColour = spheres[intersection.sphereIndex].color;
 
             // Direct illumination
-            // if (intersection.material[1] == 0.0f) {
-              for (int i = 0; i < lights.size(); i++) {
-                pixelColour += DirectLight( intersection, lights[i] );
-              }
+            for (int i = 0; i < lights.size(); i++) {
+              pixelColour += DirectLight( intersection, lights[i] );
+            }
 
-              // Indirect illumination
+            // Indirect illumination for diffuse objects
+            if (intersection.material[1] == 0.0f) {
               pixelColour = IndirectLight(pixelColour, objectColour);
-            // }
+            }
           }
         }
       }
@@ -201,9 +201,6 @@ void Draw(screen* screen) {
   }
 }
 
-vec3 IndirectLight( const vec3 pixelColour, const vec3 objectColour ) {
-  return (pixelColour + (objectColour * indirectLight));
-}
 
 /*Place updates of parameters here*/
 bool Update() {
@@ -477,6 +474,11 @@ vec3 DirectLight( const Intersection &i, Light light ) {
   power = (objectColor * light.colour * a)/surfaceArea;
 
   return power;
+}
+
+
+vec3 IndirectLight( const vec3 pixelColour, const vec3 objectColour ) {
+  return (pixelColour + (objectColour * indirectLight));
 }
 
 
