@@ -188,8 +188,9 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 
 	// Define material:
 	// Material = (ambient, diffuse, specular)
-	vec3 matte(0.0f, 0.9f, 0.1f);
-	vec3 shiny(0.0f, 0.05f, 0.9f);
+	vec3 matte(0.0f, 1.0f, 0.0f);
+	vec3 shiny(0.0f, 0.5f, 0.5f);
+	vec3 glass(0.0f, 0.0f, 0.1f);
 
 
 	triangles.clear();
@@ -245,24 +246,24 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	H = vec4( 82,165,225,1);
 
 	// Front
-	triangles.push_back( Triangle(E,B,A,red, matte) );
-	triangles.push_back( Triangle(E,F,B,red, matte) );
+	triangles.push_back( Triangle(E,B,A,red, shiny) );
+	triangles.push_back( Triangle(E,F,B,red, shiny) );
 
 	// Front
-	triangles.push_back( Triangle(F,D,B,red, matte) );
-	triangles.push_back( Triangle(F,H,D,red, matte) );
+	triangles.push_back( Triangle(F,D,B,red, shiny) );
+	triangles.push_back( Triangle(F,H,D,red, shiny) );
 
 	// BACK
-	triangles.push_back( Triangle(H,C,D,red, matte) );
-	triangles.push_back( Triangle(H,G,C,red, matte) );
+	triangles.push_back( Triangle(H,C,D,red, shiny) );
+	triangles.push_back( Triangle(H,G,C,red, shiny) );
 
 	// LEFT
-	triangles.push_back( Triangle(G,E,C,red, matte) );
-	triangles.push_back( Triangle(E,A,C,red, matte) );
+	triangles.push_back( Triangle(G,E,C,red, shiny) );
+	triangles.push_back( Triangle(E,A,C,red, shiny) );
 
 	// TOP
-	triangles.push_back( Triangle(G,F,E,red, matte) );
-	triangles.push_back( Triangle(G,H,F,red, matte) );
+	triangles.push_back( Triangle(G,F,E,red, shiny) );
+	triangles.push_back( Triangle(G,H,F,red, shiny) );
 
 
 	// ---------------------------------------------------------------------------
@@ -333,7 +334,7 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 
 	vec3 centre(-0.45, 0.6, -0.6);
   float radius = 0.3;
-	spheres.push_back(Sphere(centre, radius, white, shiny));
+	spheres.push_back(Sphere(centre, radius, white, glass));
 
 }
 

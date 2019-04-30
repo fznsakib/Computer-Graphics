@@ -16,10 +16,13 @@ using glm::mat4;
 
 SDL_Event event;
 
-// Change to 1280 x 720 later
+// Resolution - Change to 1280 x 720 later
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 256
 #define FULLSCREEN_MODE false
+
+// Maximum reflection/refraction depth
+#define MAX_RAY_DEPTH 5
 
 // Done
 // - Anti aliasing
@@ -27,6 +30,7 @@ SDL_Event event;
 // - Load sphere
 
 // To do
+// - Reflectance and Refraction
 // - Photon mapping
 // - Convert point light to area
 // - Fix rotation
@@ -49,7 +53,6 @@ struct Intersection {
 struct Light {
   vec4 position;
   vec3 colour;
-  float power;
 };
 
 struct Photon {
@@ -89,12 +92,14 @@ vector<Photon> volumePhotonMap;
 
 bool Update();
 void Draw(screen* screen);
-bool ClosestIntersection(vec4 start, vec4 dir, Intersection& closestIntersection );
+bool ClosestIntersection(vec4 start, vec4 dir, Intersection& closestIntersection, int& depth );
 vec3 DirectLight( const Intersection &i, Light light );
 void PhotonEmission( const int noOfPhotons );
 void TracePhoton( Photon& photon );
 void GetReflectedDirection(const vec4& incident, const vec4& normal, vec4& reflected);
+void GetRefractedDirection(const vec4& incident, const vec4& normal, const float ior, vec4& refracted);
 float RandomFloat(float min, float max);
+float mix(const float &a, const float &b, const float &mix);
 
 
 int main( int argc, char* argv[] )
@@ -105,16 +110,17 @@ int main( int argc, char* argv[] )
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.5, -0.7, 1.0 );
-  light.colour = vec3( 14.f * vec3( 1, 1, 1 ));
-  light.power = 10.0f;
+  light.colour = vec3( 10.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
   LoadTestModel( triangles, spheres );
 
   // Initialise photon map before scene rendering
-  int noOfPhotons= 1000;
-  PhotonEmission(noOfPhotons);
+  int noOfPhotons = 200;
+  // PhotonEmission(noOfPhotons);
+
+  std::cout << globalPhotonMap.size() << '\n';
 
   while ( Update())
     {
@@ -137,12 +143,6 @@ void Draw(screen* screen) {
   vec3 pixelColour = vec3( 1.0, 1.0, 1.0 );
   vec3 indirectLight = 0.5f * vec3(1, 1, 1);
 
-  // Initialise triangles and spheres
-  // vector<Triangle> triangles;
-  // vector<Sphere> spheres;
-  //
-  // LoadTestModel( triangles, spheres );
-
 
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {
@@ -164,7 +164,8 @@ void Draw(screen* screen) {
           vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
 
           Intersection intersection;
-          bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection);
+          int depth = 0;
+          bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection, depth);
 
           // If light intersects with object then draw it
           if (closestIntersection == true) {
@@ -175,16 +176,20 @@ void Draw(screen* screen) {
             if (intersection.triangleIndex != -1) objectColor = triangles[intersection.triangleIndex].color;
             else objectColor = spheres[intersection.sphereIndex].color;
 
-            for (int i = 0; i < lights.size(); i++) {
-              pixelColour += DirectLight( intersection, lights[i] );
-            }
+            // Direct illumination
+            // if (intersection.material[2] == 0.0f) {
+              for (int i = 0; i < lights.size(); i++) {
+                pixelColour += DirectLight( intersection, lights[i] );
+              }
+            // }
 
-            // Take into account indirect illumination
+            // Indirect illumination
             pixelColour = pixelColour + (objectColor * indirectLight);
           }
         }
       }
       if (validRay == true) {
+        // Average light for the multiple rays for anti aliasing
         vec3 averageLight = pixelColour/9.0f;
         PutPixelSDL(screen, u, v, averageLight);
       }
@@ -288,7 +293,8 @@ bool Update() {
 
 
 bool ClosestIntersection( vec4 start, vec4 dir,
-                          Intersection& closestIntersection ) {
+                          Intersection& closestIntersection,
+                          int& depth ) {
 
     // Don't check for intersection for large t
     float bound = std::numeric_limits<float>::max();
@@ -336,19 +342,73 @@ bool ClosestIntersection( vec4 start, vec4 dir,
           spheres[i].getNormal(vec3(position), closestIntersection.normal);
           closestIntersection.colour = spheres[i].color;
           closestIntersection.material = spheres[i].material;
-          closestIntersection.triangleIndex = -1;
           closestIntersection.sphereIndex = i;
+          closestIntersection.triangleIndex = -1;
         }
       }
     }
 
-    // Returns with intersections closest to origin of ray
-    if ( closestIntersection.distance < bound ) {
-        return true;
-    }
-    else {
+    if (closestIntersection.distance == bound) {
+      closestIntersection.colour = vec3(0.0f, 0.0f, 0.0f);
       return false;
     }
+
+    // REFLECTION AND REFRACTION
+    // If the normal and the view direction are not opposite to each other
+    // reverse the normal direction. That also means we are inside the sphere so set
+    // the inside bool to true. Finally reverse the sign of IdotN which we want
+    // positive.
+    bool inside = false;
+    if (glm::dot(dir, closestIntersection.normal) > 0) {
+      closestIntersection.normal = -closestIntersection.normal;
+      inside = true;
+    }
+
+    float transmission = 1.0f - (closestIntersection.material[1] + closestIntersection.material[2]);
+    Intersection reflection;
+    Intersection refraction;
+
+    // Check if reflective or refractive
+    if ((closestIntersection.material[2] > 0.0f || transmission > 0.0f) && depth < MAX_RAY_DEPTH) {
+      float facingratio = -glm::dot(dir, closestIntersection.normal);
+
+      // Change the reflection/refraction mix value to tweak the effect
+      float fresnelEffect = mix(pow(1 - facingratio, 3), 1, 0.1);
+
+      // Calculate new reflected direction of ray
+      vec4 reflectionDir;
+      GetReflectedDirection(dir, closestIntersection.normal, reflectionDir);
+
+      glm::normalize(reflectionDir);
+
+      // Trace reflected ray
+      depth += 1;
+      ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection, depth);
+
+      // Check if refractive
+      if (transmission > 0.0f) {
+        // Compute index of refraction depending on whether light is inside or outside object
+        float ior = 1.5;
+        float eta = (inside) ? ior : 1 / ior;
+
+        // Calculate new refracted direction of ray
+        vec4 refractionDir;
+        GetRefractedDirection(dir, closestIntersection.normal, eta, refractionDir);
+
+        // Trace refracted ray
+        depth += 1;
+        ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), refractionDir, refraction, depth);
+      }
+
+      // Now compute the mix of reflection and refraction colours
+      vec3 computedColour = ((reflection.colour * fresnelEffect) +
+                            (refraction.colour * (1 - fresnelEffect) * transmission))
+                            * closestIntersection.colour;
+
+      closestIntersection.colour += computedColour;
+    }
+
+    return true;
   }
 
 
@@ -367,10 +427,11 @@ vec3 DirectLight( const Intersection &i, Light light ) {
 
   // Check for surface between triangle and light
   Intersection intersection;
+  int depth = 0;
 
   // Check if distance less than to light. Emit ray from a small distance off the surface
   // so that it doesn't intersect with itself
-  if (ClosestIntersection(i.position + (normal * 0.00001f), direction, intersection)) {
+  if (ClosestIntersection(i.position + (normal * 0.00001f), direction, intersection, depth)) {
     if (intersection.distance < r_magnitude) {
       return vec3(0.0,0.0,0.0);
     }
@@ -393,8 +454,6 @@ vec3 DirectLight( const Intersection &i, Light light ) {
   return power;
 }
 
-// TODO
-// - Trace photons
 
 void PhotonEmission( const int noOfPhotons ) {
   int photonsEmitted = 0;
@@ -431,18 +490,31 @@ void TracePhoton(Photon &photon) {
 
   while (photonAbsorbed == false) {
     // Call ClosestIntersection to find next object to intersect with
-    ClosestIntersection(photon.position, photon.direction, intersection);
+    int depth = 0;
+    ClosestIntersection(photon.position, photon.direction, intersection, depth);
 
     // Use Russian Roulette on material properties to decide to photon action
     float random = RandomFloat(0.0f, 1.0f);
 
-    // Check specularity for reflection occurring. Add photon for each intersection
-    if (random < intersection.material[2]) {
+    // Add photon for each intersection
+    // Check for diffuse reflection occurring
+    if (random < intersection.material[1]) {
       // Reflect photon with new position in new direction
       photon.position = intersection.position;
 
       globalPhotonMap.push_back(photon);
 
+      // photon.power = photon.power * intersection.material[1];
+      GetReflectedDirection(photon.direction, intersection.normal, photon.direction);
+    }
+    // Check for specular reflection occurring
+    else if (random < (intersection.material[1] + intersection.material[2])) {
+      // Reflect photon with new position in new direction
+      photon.position = intersection.position;
+
+      globalPhotonMap.push_back(photon);
+
+      // photon.power = photon.power * intersection.material[2];
       GetReflectedDirection(photon.direction, intersection.normal, photon.direction);
     }
 
@@ -461,11 +533,8 @@ void TracePhoton(Photon &photon) {
 
       photonAbsorbed = true;
     }
-
     // Decide which photon map to add photon to
-
   }
-
 }
 
 
@@ -474,9 +543,24 @@ void GetReflectedDirection(const vec4& incident, const vec4& normal, vec4& refle
 }
 
 
+void GetRefractedDirection(const vec4& incident, const vec4& normal, const float ior, vec4& refracted) {
+  float cosi = -(glm::dot(normal, incident));
+  float k = (1 - ior) * ior * (1 - cosi * cosi);
+
+  refracted = (incident * ior) + normal * (ior *  cosi - sqrt(k));
+  glm::normalize(refracted);
+}
+
+
 float RandomFloat(float min, float max) {
   float num = ((float) rand()) / (float) RAND_MAX;
 
   float range = max - min;
   return (num*range) + min;
+}
+
+
+float mix(const float &a, const float &b, const float &mix)
+{
+    return b * mix + a * (1 - mix);
 }
