@@ -112,14 +112,14 @@ int main( int argc, char* argv[] )
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.2, -0.7, 1.0 );
-  light.colour = vec3( 10.0f * vec3( 1, 1, 1 ));
+  light.colour = vec3( 20.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
   LoadTestModel( triangles, spheres );
 
   // Initialise photon map before scene rendering
-  int noOfPhotons = 50000;
+  int noOfPhotons = 20000;
   PhotonEmission(noOfPhotons);
 
   std::cout << globalPhotonMap.size() << '\n';
@@ -158,22 +158,21 @@ void Draw(screen* screen) {
 
       if (ClosestIntersection(cameraPos, dir, intersection)) {
         float distance;
-        float radius = 0.6f;
+        float radius = 0.5f;
 
         for (int i = 0; i < globalPhotonMap.size(); i++) {
           distance = glm::distance(intersection.position, globalPhotonMap[i].position);
 
           if (distance < radius) colour += globalPhotonMap[i].power;
-
-          // if (intersection.position == globalPhotonMap[i].position) {
-          //   colour += globalPhotonMap;
-          // }
         }
       }
       PutPixelSDL(screen, u, v, colour);
     }
   }
 }
+
+
+
 
     //   pixelColour = vec3 (0.0f, 0.0f, 0.0f);
     //   vec3 indirectLight = 0.5f * vec3(1, 1, 1);
@@ -519,8 +518,13 @@ void PhotonEmission( const int noOfPhotons ) {
     } while ((x*x) + (y*y) + (z*z) > 1);
 
     // Change to square light later
-    photon.position = vec4(lights[0].position.x, lights[0].position.y, lights[0].position.z, 1.0f);
-    photon.direction = vec4(x, y, z, 1.0);
+    photon.position = vec4(RandomFloat(-0.2f, 0.2f), -0.95f, RandomFloat(-0.2f, 0.2f), 1.0f);
+    float u = RandomFloat(0.0f, 1.0f);
+    float v = 2 * M_PI * RandomFloat(0.0f, 1.0f);
+    photon.direction = vec4((cos(v) * sqrt(u)), sqrt(1- u), (sin(v) * sqrt(u)), 1.0f);
+
+    // photon.position = vec4(lights[0].position.x, lights[0].position.y, lights[0].position.z, 1.0f);
+    // photon.direction = vec4(x, y, z, 1.0);
     photon.power = lights[0].colour / (float)noOfPhotons;
 
     // Trace photon from light position in photon direction dir
