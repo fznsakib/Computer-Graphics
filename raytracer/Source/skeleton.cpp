@@ -16,7 +16,10 @@ using glm::mat4;
 
 SDL_Event event;
 
-// Resolution - Change to 1280 x 720 later
+// Resolution
+// Default - 320 x 256
+// Medium  - 800 x 640
+// Change to 1280 x 720 later with focalLength 1024 and z = -4.2
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 256
 #define FULLSCREEN_MODE false
@@ -112,7 +115,7 @@ int main( int argc, char* argv[] )
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.2, -0.7, 1.0 );
-  light.colour = vec3( 20.0f * vec3( 1, 1, 1 ));
+  light.colour = vec3( 6.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
@@ -148,13 +151,13 @@ void Draw(screen* screen) {
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {
     for (int u = 0; u < SCREEN_WIDTH; u++) {
+      vec4 dir = (vec4((u - SCREEN_WIDTH/2), v - SCREEN_HEIGHT/2, focalLength, 1.0));
+      // Calculate the new direction vector after yaw rotation
+      dir = R * dir;
 
+      // Apply global photon mapping
       Intersection intersection;
       vec3 colour;
-
-      vec4 dir = (vec4((u - SCREEN_WIDTH/2), v - SCREEN_HEIGHT/2, focalLength, 1.0));
-      /* Calculate the new direction vector after yaw rotation */
-      dir = R * dir;
 
       if (ClosestIntersection(cameraPos, dir, intersection)) {
         float distance;
@@ -166,7 +169,50 @@ void Draw(screen* screen) {
           if (distance < radius) colour += globalPhotonMap[i].power;
         }
       }
-      PutPixelSDL(screen, u, v, colour);
+      // PutPixelSDL(screen, u, v, colour);
+
+      pixelColour = vec3 (0.0f, 0.0f, 0.0f);
+      vec3 indirectLight = 0.5f * vec3(1, 1, 1);
+      bool validRay = false;
+
+      // Trace multiple rays around each ray and average color for anti aliasing
+      // Change to 4 x 4 later
+      for (int i = -2; i <= 2; ++i) {
+        for (int j = -2; j <= 2; ++j ) {
+          // Multiply i and j by distance to surrounding rays being used
+          float multiplier = 0.25;
+          vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
+
+          Intersection intersection;
+          int depth = 0;
+          bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection);
+
+          // If light intersects with object then draw it
+          if (closestIntersection == true) {
+            validRay = true;
+            vec3 objectColour = intersection.colour;
+
+            // Direct illumination
+            for (int i = 0; i < lights.size(); i++) {
+              pixelColour += DirectLight( intersection, lights[i] );
+            }
+
+            // Indirect illumination for diffuse objects
+            if (intersection.material[1] == 0.0f) {
+              pixelColour = IndirectLight(pixelColour, objectColour, indirectLight);
+            }
+          }
+        }
+      }
+      if (validRay == true) {
+        // Average light for the multiple rays for anti aliasing
+        vec3 averageLight = pixelColour/16.0f;
+        colour * averageLight;
+        PutPixelSDL(screen, u, v, averageLight);
+      }
+      else {
+        PutPixelSDL(screen, u, v, black);
+      }
     }
   }
 }
