@@ -184,13 +184,15 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec3 blue(   0.15f, 0.15f, 0.75f );
 	vec3 purple( 0.75f, 0.15f, 0.75f );
 	vec3 white(  0.75f, 0.75f, 0.75f );
+	vec3 black(  0.0f, 0.0f, 0.0f );
+
 	vec3 beige(0.85f, 0.85f, 0.7f);
 
 	// Define material:
-	// Material = (ambient, diffuse, specular)
-	vec3 matte(0.0f, 1.0f, 0.0f);
-	vec3 shiny(0.0f, 0.5f, 0.5f);
-	vec3 glass(0.0f, 0.0f, 0.1f);
+	// Material = (diffuse, specular, absorption)
+	vec3 matte(0.8f, 0.0f, 0.2f);
+	vec3 chrome(0.0f, 0.8f, 0.2f);
+	vec3 glass(0.0f, 0.0f, 0.2f);
 
 
 	triangles.clear();
@@ -246,24 +248,24 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	H = vec4( 82,165,225,1);
 
 	// Front
-	triangles.push_back( Triangle(E,B,A,red, shiny) );
-	triangles.push_back( Triangle(E,F,B,red, shiny) );
+	triangles.push_back( Triangle(E,B,A,red, chrome) );
+	triangles.push_back( Triangle(E,F,B,red, chrome) );
 
 	// Front
-	triangles.push_back( Triangle(F,D,B,red, shiny) );
-	triangles.push_back( Triangle(F,H,D,red, shiny) );
+	triangles.push_back( Triangle(F,D,B,red, chrome) );
+	triangles.push_back( Triangle(F,H,D,red, chrome) );
 
 	// BACK
-	triangles.push_back( Triangle(H,C,D,red, shiny) );
-	triangles.push_back( Triangle(H,G,C,red, shiny) );
+	triangles.push_back( Triangle(H,C,D,red, chrome) );
+	triangles.push_back( Triangle(H,G,C,red, chrome) );
 
 	// LEFT
-	triangles.push_back( Triangle(G,E,C,red, shiny) );
-	triangles.push_back( Triangle(E,A,C,red, shiny) );
+	triangles.push_back( Triangle(G,E,C,red, chrome) );
+	triangles.push_back( Triangle(E,A,C,red, chrome) );
 
 	// TOP
-	triangles.push_back( Triangle(G,F,E,red, shiny) );
-	triangles.push_back( Triangle(G,H,F,red, shiny) );
+	triangles.push_back( Triangle(G,F,E,red, chrome) );
+	triangles.push_back( Triangle(G,H,F,red, chrome) );
 
 
 	// ---------------------------------------------------------------------------
@@ -332,9 +334,9 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	// ----------------------------------------------
 	// Spheres
 
-	vec3 centre(-0.45, 0.6, -0.6);
+	vec3 centre(0.45, -0.4, -0.1);
   float radius = 0.3;
-	spheres.push_back(Sphere(centre, radius, white, glass));
+	spheres.push_back(Sphere(centre, radius, black, chrome));
 
 }
 

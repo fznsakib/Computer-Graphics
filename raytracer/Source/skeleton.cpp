@@ -74,6 +74,7 @@ struct Photon {
 float focalLength = 256;
 vec4 cameraPos( 0.0, 0.0, -3.0, 1.0);
 vector<Light> lights;
+vec3 indirectLight = 0.5f * vec3(1, 1, 1);
 float yaw = 0.0;
 mat4 R(1.0f);
 
@@ -94,6 +95,7 @@ bool Update();
 void Draw(screen* screen);
 bool ClosestIntersection(vec4 start, vec4 dir, Intersection& closestIntersection, int& depth );
 vec3 DirectLight( const Intersection &i, Light light );
+vec3 IndirectLight( const vec3 pixelColour, const vec3 objectColour );
 void PhotonEmission( const int noOfPhotons );
 void TracePhoton( Photon& photon );
 void GetReflectedDirection(const vec4& incident, const vec4& normal, vec4& reflected);
@@ -141,7 +143,6 @@ void Draw(screen* screen) {
 
   vec3 black(0.0,0.0,0.0);
   vec3 pixelColour = vec3( 1.0, 1.0, 1.0 );
-  vec3 indirectLight = 0.5f * vec3(1, 1, 1);
 
 
   // u and v are coordinates on the 2D screen
@@ -170,21 +171,21 @@ void Draw(screen* screen) {
           // If light intersects with object then draw it
           if (closestIntersection == true) {
             validRay = true;
-            vec3 objectColor;
+            vec3 objectColour;
 
             // Check if intersection with triangle or sphere to get correct colour
-            if (intersection.triangleIndex != -1) objectColor = triangles[intersection.triangleIndex].color;
-            else objectColor = spheres[intersection.sphereIndex].color;
+            if (intersection.triangleIndex != -1) objectColour = triangles[intersection.triangleIndex].color;
+            else objectColour = spheres[intersection.sphereIndex].color;
 
             // Direct illumination
-            // if (intersection.material[2] == 0.0f) {
+            // if (intersection.material[1] == 0.0f) {
               for (int i = 0; i < lights.size(); i++) {
                 pixelColour += DirectLight( intersection, lights[i] );
               }
-            // }
 
-            // Indirect illumination
-            pixelColour = pixelColour + (objectColor * indirectLight);
+              // Indirect illumination
+              pixelColour = IndirectLight(pixelColour, objectColour);
+            // }
           }
         }
       }
@@ -198,6 +199,10 @@ void Draw(screen* screen) {
       }
     }
   }
+}
+
+vec3 IndirectLight( const vec3 pixelColour, const vec3 objectColour ) {
+  return (pixelColour + (objectColour * indirectLight));
 }
 
 /*Place updates of parameters here*/
@@ -353,60 +358,80 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       return false;
     }
 
-    // REFLECTION AND REFRACTION
-    // If the normal and the view direction are not opposite to each other
-    // reverse the normal direction. That also means we are inside the sphere so set
-    // the inside bool to true. Finally reverse the sign of IdotN which we want
-    // positive.
-    bool inside = false;
-    if (glm::dot(dir, closestIntersection.normal) > 0) {
-      closestIntersection.normal = -closestIntersection.normal;
-      inside = true;
-    }
-
-    float transmission = 1.0f - (closestIntersection.material[1] + closestIntersection.material[2]);
-    Intersection reflection;
-    Intersection refraction;
-
-    // Check if reflective or refractive
-    if ((closestIntersection.material[2] > 0.0f || transmission > 0.0f) && depth < MAX_RAY_DEPTH) {
-      float facingratio = -glm::dot(dir, closestIntersection.normal);
-
-      // Change the reflection/refraction mix value to tweak the effect
-      float fresnelEffect = mix(pow(1 - facingratio, 3), 1, 0.1);
+    // Reflection
+    if (closestIntersection.material[1] > 0.0f) {
+      Intersection reflection;
 
       // Calculate new reflected direction of ray
-      vec4 reflectionDir;
-      GetReflectedDirection(dir, closestIntersection.normal, reflectionDir);
-
-      glm::normalize(reflectionDir);
+      vec4 reflectionDir = glm::reflect(dir, closestIntersection.normal);
 
       // Trace reflected ray
-      depth += 1;
-      ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection, depth);
-
-      // Check if refractive
-      if (transmission > 0.0f) {
-        // Compute index of refraction depending on whether light is inside or outside object
-        float ior = 1.5;
-        float eta = (inside) ? ior : 1 / ior;
-
-        // Calculate new refracted direction of ray
-        vec4 refractionDir;
-        GetRefractedDirection(dir, closestIntersection.normal, eta, refractionDir);
-
-        // Trace refracted ray
-        depth += 1;
-        ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), refractionDir, refraction, depth);
+      if (ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection, depth)) {
+        vec3 colour = IndirectLight(closestIntersection.colour, reflection.colour);
+        reflection.colour = colour;
       }
 
-      // Now compute the mix of reflection and refraction colours
-      vec3 computedColour = ((reflection.colour * fresnelEffect) +
-                            (refraction.colour * (1 - fresnelEffect) * transmission))
-                            * closestIntersection.colour;
+      closestIntersection.colour = reflection.colour;
 
-      closestIntersection.colour += computedColour;
+      if (closestIntersection.colour == vec3(0.0f, 0.0f, 0.0f)) {
+        return false;
+      }
     }
+
+    // REFLECTION AND REFRACTION
+    // // If the normal and the view direction are not opposite to each other
+    // // reverse the normal direction. That also means we are inside the sphere so set
+    // // the inside bool to true. Finally reverse the sign of IdotN which we want
+    // // positive.
+    // bool inside = false;
+    // if (glm::dot(dir, closestIntersection.normal) > 0) {
+    //   closestIntersection.normal = -closestIntersection.normal;
+    //   inside = true;
+    // }
+    //
+    // float transmission = 1.0f - (closestIntersection.material[1] + closestIntersection.material[2]);
+    // Intersection reflection;
+    // Intersection refraction;
+    //
+    // // Check if reflective or refractive
+    // if ((closestIntersection.material[2] > 0.0f || transmission > 0.0f) && depth < MAX_RAY_DEPTH) {
+    //   float facingratio = -glm::dot(dir, closestIntersection.normal);
+    //
+    //   // Change the reflection/refraction mix value to tweak the effect
+    //   float fresnelEffect = mix(pow(1 - facingratio, 3), 1, 0.1);
+    //
+    //   // Calculate new reflected direction of ray
+    //   vec4 reflectionDir;
+    //   GetReflectedDirection(dir, closestIntersection.normal, reflectionDir);
+    //
+    //   glm::normalize(reflectionDir);
+    //
+    //   // Trace reflected ray
+    //   depth += 1;
+    //   ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection, depth);
+    //
+    //   // Check if refractive
+    //   if (transmission > 0.0f) {
+    //     // Compute index of refraction depending on whether light is inside or outside object
+    //     float ior = 1.5;
+    //     float eta = (inside) ? ior : 1 / ior;
+    //
+    //     // Calculate new refracted direction of ray
+    //     vec4 refractionDir;
+    //     GetRefractedDirection(dir, closestIntersection.normal, eta, refractionDir);
+    //
+    //     // Trace refracted ray
+    //     depth += 1;
+    //     ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), refractionDir, refraction, depth);
+    //   }
+    //
+    //   // Now compute the mix of reflection and refraction colours
+    //   vec3 computedColour = ((reflection.colour * fresnelEffect) +
+    //                         (refraction.colour * (1 - fresnelEffect) * transmission))
+    //                         * closestIntersection.colour;
+    //
+    //   closestIntersection.colour += computedColour;
+    // }
 
     return true;
   }
@@ -497,43 +522,30 @@ void TracePhoton(Photon &photon) {
     float random = RandomFloat(0.0f, 1.0f);
 
     // Add photon for each intersection
-    // Check for diffuse reflection occurring
-    if (random < intersection.material[1]) {
+    // DIFFUSE REFLECTION
+    if (random < intersection.material[0]) {
       // Reflect photon with new position in new direction
       photon.position = intersection.position;
+      photon.power = photon.power * intersection.colour;
 
       globalPhotonMap.push_back(photon);
 
-      // photon.power = photon.power * intersection.material[1];
+      // Need to change to random
       GetReflectedDirection(photon.direction, intersection.normal, photon.direction);
     }
-    // Check for specular reflection occurring
-    else if (random < (intersection.material[1] + intersection.material[2])) {
+    // SPECULAR REFLECTION
+    else if (random < (intersection.material[1])) {
       // Reflect photon with new position in new direction
       photon.position = intersection.position;
-
-      globalPhotonMap.push_back(photon);
-
-      // photon.power = photon.power * intersection.material[2];
       GetReflectedDirection(photon.direction, intersection.normal, photon.direction);
+
+      // Don't store photon as this will be done by the raytracer
     }
-
-    // TODO - ADD FOR TRANSMISSION/REFRACTANCE
-    // Check specularity + diffuseness for transmission occurring
-    // else if (random < (intersection.material[1] + intersection.material[2])) {
-    //   // Refract new photon
-    //   photon.position = intersection.position;
-    // }
-
-    // Else absorb photon
+    // ABSORPTION
     else {
       photon.position = intersection.position;
-
-      globalPhotonMap.push_back(photon);
-
       photonAbsorbed = true;
     }
-    // Decide which photon map to add photon to
   }
 }
 
