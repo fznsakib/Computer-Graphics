@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <limits.h>
 #include <math.h>
+#include <algorithm>
+#include <functional>
+#include <array>
+#include <iostream>
 
 #include "SDLauxiliary.h"
 #include "TestModelH.h"
@@ -17,11 +21,11 @@ using glm::mat4;
 SDL_Event event;
 
 // Resolution
-// Default - 320 x 256
+// Default - 320 x 256 / focalLength = 256 / z = -3.0
 // Medium  - 800 x 640
-// Change to 1280 x 720 later with focalLength 1024 and z = -4.2
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 640
+// Change to 1280 x 720 / focalLength = 1024 / z = -4.2
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 256
 #define FULLSCREEN_MODE false
 
 // Maximum reflection/refraction depth
@@ -31,11 +35,12 @@ SDL_Event event;
 // - Anti aliasing
 // - Cramer's rule
 // - Load sphere
+// - Convert point light to area
 
 // To do
 // - Reflectance and Refraction
+// - Build kd tree
 // - Photon mapping
-// - Convert point light to area
 // - Fix rotation
 // - Bump maps?
 
@@ -65,6 +70,19 @@ struct Photon {
   bool flag;   //flag used in kdtree
 };
 
+struct Node {
+  Photon* node;
+};
+
+struct KDTree {
+  Node node;
+  KDTree* left;
+  KDTree* right;
+};
+
+
+
+
 // phi = 255 * (atan2(dy,dx)+PI) / (2*PI)
 // theta = 255 * acos(dx) / PI
 
@@ -72,8 +90,8 @@ struct Photon {
 /* VARIABLES                                                                   */
 /* ----------------------------------------------------------------------------*/
 
-float focalLength = 1024;
-vec4 cameraPos( 0.0, 0.0, -4.2, 1.0);
+float focalLength = 256;
+vec4 cameraPos( 0.0, 0.0, -3.0, 1.0);
 vector<Light> lights;
 float yaw = 0.0;
 mat4 R(1.0f);
@@ -81,9 +99,15 @@ mat4 R(1.0f);
 vector<Triangle> triangles;
 vector<Sphere> spheres;
 
-vector<Photon> causticPhotonMap;
 vector<Photon> globalPhotonMap;
+vector<Photon> causticPhotonMap;
 vector<Photon> volumePhotonMap;
+
+vector<Photon*> globalPhotonPointers;
+// vector<Photon*> causticTree;
+// vector<Photon*> volumeTree;
+
+int currentMaxDimension;
 
 
 /* ----------------------------------------------------------------------------*/
@@ -101,8 +125,90 @@ void TracePhoton( Photon& photon );
 void GetReflectedDirection(const vec4& incident, const vec4& normal, vec4& reflected);
 void GetRefractedDirection(const vec4& incident, const vec4& normal, const float ior, vec4& refracted);
 vec4 GenerateRandomDirection();
+KDTree* BalanceTree( vector<Photon*> photonPointers );
+int MaxDimension( vector<Photon> photons );
+int GetCurrentMaxDimension();
 float RandomFloat(float min, float max);
 float mix(const float &a, const float &b, const float &mix);
+bool compareByPosition(const Photon* lhs, const Photon* rhs, const int dimension );
+
+
+bool compareByPosition(const Photon* lhs, const Photon* rhs )
+{
+    return lhs->position.x < rhs->position.x;
+}
+
+int GetCurrentMaxDimension() {
+  return currentMaxDimension;
+}
+
+int MaxDimension( vector<Photon*> photons ) {
+  float minX =  2.0f, minY =  2.0f, minZ =  2.0f;
+  float maxX = -2.0f, maxY = -2.0f, maxZ = -2.0f;
+  // Find the dimension where distance is max
+  for (int i = 0; i < photons.size(); i++) {
+    if (photons[i]->position.x > maxX) maxX = photons[i]->position.x;
+    if (photons[i]->position.x < minX) minX = photons[i]->position.x;
+
+    if (photons[i]->position.y > maxY) maxY = photons[i]->position.y;
+    if (photons[i]->position.y < minY) minY = photons[i]->position.y;
+
+    if (photons[i]->position.z > maxZ) maxZ = photons[i]->position.z;
+    if (photons[i]->position.z < minZ) minZ = photons[i]->position.z;
+  }
+
+  int dimension = -1;
+
+  float rangeX = maxX - minX;
+  float rangeY = maxY - minY;
+  float rangeZ = maxZ - minZ;
+
+  if (rangeX > rangeY && rangeX > rangeZ) dimension = 0;
+  else if (rangeY > rangeX && rangeY > rangeZ) dimension = 1;
+  else if (rangeZ > rangeX && rangeZ > rangeY) dimension = 2;
+  else dimension = 0;
+
+  return dimension;
+}
+
+KDTree* BalanceTree( vector<Photon*> photonPointers ) {
+
+  // Find the dimension where distance is max
+  currentMaxDimension = MaxDimension(photonPointers);
+
+  // Sort in the dimension with the maximum distance
+  sort(photonPointers.begin(), photonPointers.end(), [](const Photon* lhs, const Photon* rhs) {
+    return lhs->position[GetCurrentMaxDimension()] < rhs->position[GetCurrentMaxDimension()];
+  });
+
+  KDTree tree;
+
+  // Find median photon, leftTree and rightTree
+  int medianIndex = floor(photonPointers.size() / 2);
+  vector<Photon*> leftTree;
+  vector<Photon*> rightTree;
+
+  for (int i = 0; i < photonPointers.size(); i++) {
+    if (i < medianIndex) leftTree.push_back(photonPointers[i]);
+    else if (i > medianIndex) rightTree.push_back(photonPointers[i]);
+  }
+
+  // If one more photon left to balance then assign node to it and return
+  if (photonPointers.size() == 1) {
+    tree.node.node = photonPointers[0];
+    return &tree;
+  }
+
+  tree.node.node = photonPointers[medianIndex];
+
+  // Recurse down left and right paths
+  if (leftTree.size() != 0) tree.left = BalanceTree(leftTree);
+  if (rightTree.size() != 0) tree.right = BalanceTree(rightTree);
+
+  // Return balance kd tree
+  return &tree;
+
+}
 
 
 int main( int argc, char* argv[] )
@@ -120,10 +226,20 @@ int main( int argc, char* argv[] )
   LoadTestModel( triangles, spheres );
 
   // Initialise photon map before scene rendering
-  int noOfPhotons = 20000;
+  // int noOfPhotons = 500000;
+  int noOfPhotons = 2000;
   PhotonEmission(noOfPhotons);
 
-  std::cout << globalPhotonMap.size() << '\n';
+  // Populate vector with pointers to photons
+  for (int i = 0; i < globalPhotonMap.size(); i++) {
+    globalPhotonPointers.push_back(&globalPhotonMap[i]);
+  }
+
+  // photonPointer->position[dimension]
+
+  // Create and balance photon kd tree
+  BalanceTree(globalPhotonPointers);
+
 
   while ( Update())
     {
@@ -165,8 +281,8 @@ void Draw(screen* screen) {
         // Check if intersecting with light emitter
         lightCheck = intersection.position.x >  -0.2f  &&
                      intersection.position.x <   0.2f  &&
-                     intersection.position.y >=  -1.0f  &&
-                     intersection.position.y <  -0.95f  &&
+                     intersection.position.y >= -1.0f  &&
+                     intersection.position.y <  -0.95f &&
                      intersection.position.z >  -0.8f  &&
                      intersection.position.z <  -0.4f;
 
@@ -229,9 +345,6 @@ void Draw(screen* screen) {
     }
   }
 }
-
-
-
 
     //   pixelColour = vec3 (0.0f, 0.0f, 0.0f);
     //   vec3 indirectLight = 0.5f * vec3(1, 1, 1);
@@ -679,7 +792,6 @@ float RandomFloat(float min, float max) {
 }
 
 
-float mix(const float &a, const float &b, const float &mix)
-{
+float mix(const float &a, const float &b, const float &mix) {
     return b * mix + a * (1 - mix);
 }
