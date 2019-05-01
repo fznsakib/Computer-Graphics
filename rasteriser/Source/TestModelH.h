@@ -52,6 +52,7 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 	vec3 blue(   0.15f, 0.15f, 0.75f );
 	vec3 purple( 0.75f, 0.15f, 0.75f );
 	vec3 white(  0.75f, 0.75f, 0.75f );
+	vec3 wood( 10.0f, 10.0f, 10.0f);
 
 	room.clear();
 	boxes.clear();
@@ -92,10 +93,10 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 
 	// Ceiling
 	Triangle ceiling1 ( E, F, G, cyan );
-	ceiling1.mirror = false;
+	ceiling1.mirror = true;
 	room.push_back( ceiling1 );
 	Triangle ceiling2( F, H, G, cyan );
-	ceiling2.mirror = false;
+	ceiling2.mirror = true;
 	room.push_back( ceiling2 );
 
 	// Back wall

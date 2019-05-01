@@ -20,6 +20,7 @@ CC=g++
 SDL_CFLAGS := $(shell sdl2-config --cflags)
 GLM_CFLAGS := -I$(GLMDIR)
 SDL_LDFLAGS := $(shell sdl2-config --libs)
+OPENCV_FLAGS := $(shell pkg-config --cflags --libs opencv)
 
 ########
 #   This is the default action
@@ -35,13 +36,13 @@ OBJ = $(B_DIR)/$(FILE).o
 ########
 #   Objects
 $(B_DIR)/$(FILE).o : $(S_DIR)/$(FILE).cpp $(S_DIR)/SDLauxiliary.h $(S_DIR)/TestModelH.h
-	$(CC) $(CC_OPTS) -o $(B_DIR)/$(FILE).o $(S_DIR)/$(FILE).cpp $(SDL_CFLAGS) $(GLM_CFLAGS)
+	$(CC) $(CC_OPTS) -o $(B_DIR)/$(FILE).o $(S_DIR)/$(FILE).cpp $(SDL_CFLAGS) $(GLM_CFLAGS) $(OPENCV_FLAGS)
 
 
 ########
 #   Main build rule
 Build : $(OBJ) Makefile
-	$(CC) $(LN_OPTS) -o $(EXEC) $(OBJ) $(SDL_LDFLAGS)
+	$(CC) $(LN_OPTS) -o $(EXEC) $(OBJ) $(SDL_LDFLAGS) $(OPENCV_FLAGS)
 
 
 clean:

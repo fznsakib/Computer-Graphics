@@ -5,6 +5,10 @@
 #include "SDLauxiliary.h"
 #include "TestModelH.h"
 #include <stdint.h>
+// OPENCV modules
+#include "/usr/local/Cellar/opencv/3.4.1_5/include/opencv/cv.hpp"
+// #include "/usr/local/Cellar/opencv/3.4.1_5/include/opencv2/highgui/highgui.hpp"   //adjust import locations
+// #include "/usr/local/Cellar/opencv/3.4.1_5/include/opencv/cxcore.hpp"    //depending on your machine setup
 
 using namespace std;
 using glm::vec3;
@@ -43,6 +47,9 @@ vec3 indirectLightPowerPerArea = 0.08f*vec3( 1, 1, 1 );
 // Normal and reflectance values to be passed to PixelShader
 vec4 currentNormal;
 vec3 currentReflectance;
+
+// Store texture here
+cv:: Mat texture;
 
 // Tells if current triangle is a mirror, and save the colour of the reflection.
 bool isMirror;
@@ -95,6 +102,8 @@ float surroundingShadowSum( int x, int y );
 vec3 antiAliasing( int y, int x );
 vec3 findReflection( const Pixel& p );
 int closestIntersection( vec4 reflectedRay );
+int findU(const Pixel& p);
+int findV(const Pixel& p);
 
 int main( int argc, char* argv[] )
 {
@@ -102,6 +111,11 @@ int main( int argc, char* argv[] )
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
   // Load objects here and copy values to vector in update.
   LoadTestModel( originalroom, originalbox );
+  // load image.
+  texture = cv::imread("Textures/Marble2000x2000.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  cv::imshow("window", texture);
+  cv::waitKey(0);
+  printf("%d, %d\n", texture.rows, texture.cols );
 
   while ( Update())
     {
@@ -489,6 +503,10 @@ void PixelShader( const Pixel& p, screen* screen ) {
         case 0:
         // Choose normal colour
         screenBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
+        if (isMirror) {
+          glm::vec3 wood(((float)texture.at<cv::Vec3b>(findU(p), findV(p))[2]/255.0f), ((float)texture.at<cv::Vec3b>(findU(p), findV(p))[1]/255.0f), ((float)texture.at<cv::Vec3b>(findU(p), findV(p))[0]/255.0f));
+          screenBuffer[y][x] = wood * calculateIllumination(p, currentNormal);
+        }
         break;
         case 1:
         // Choose random colour
@@ -670,6 +688,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -703,6 +722,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -736,6 +756,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -854,6 +875,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -888,6 +910,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -922,6 +945,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1040,6 +1064,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1074,6 +1099,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1108,6 +1134,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1226,6 +1253,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1260,6 +1288,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1294,6 +1323,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1404,6 +1434,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1434,6 +1465,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1464,6 +1496,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
+        extraTriangle.mirror = triangles[i].mirror;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1540,7 +1573,7 @@ vec3 antiAliasing(int y, int x) {
   vec3 val = vec3(0.0f, 0.0f, 0.0f);
   val = screenBuffer[y][x] + screenBuffer[y-1][x] + screenBuffer[y+1][x]  + screenBuffer[y][x-1] +
         screenBuffer[y][x+1];
-  val /= 9.0f;
+  val /= 4.0f;
 
   return val;
 }
@@ -1630,4 +1663,18 @@ int closestIntersection(vec4 reflectedRay) {
     }
   }
   return index;
+}
+
+int findU(const Pixel& p) {
+  vec3 objectSpace = vec3(p.pos3d + cameraPos);
+
+  int u = -100*objectSpace.y + 100;
+  return u;
+}
+
+int findV(const Pixel& p) {
+  vec3 objectSpace = vec3(p.pos3d + cameraPos);
+
+  int v = 100*objectSpace.z + 100;
+  return v;
 }
