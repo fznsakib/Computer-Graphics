@@ -32,6 +32,7 @@ vec3 currentColor;
 float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 vec3 screenBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 int shadowBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+vec3 mirrorBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 
 
 // Initialise light variables
@@ -43,11 +44,17 @@ vec3 indirectLightPowerPerArea = 0.08f*vec3( 1, 1, 1 );
 vec4 currentNormal;
 vec3 currentReflectance;
 
+// Tells if current triangle is a mirror, and save the colour of the reflection.
+bool isMirror;
+vec3 reflection;
+
 // Choose random colour or correct colour
 int randColourSelect = 0;
 
-// Store frames per second to print.
-int fps;
+// Store our triangles here.
+vector<Triangle> originalroom;
+vector<Triangle> originalbox;
+vector<Triangle> clippedTriangles;
 
 struct Pixel
 {
@@ -85,11 +92,16 @@ vector<Triangle> clip( vector<Triangle>& triangles, int plane );
 vector<Triangle> createShadowVolume( vector<Triangle>& triangles );
 void toCameraSpace( vector<Triangle>& triangles );
 float surroundingShadowSum( int x, int y );
+vec3 antiAliasing( int y, int x );
+vec3 findReflection( const Pixel& p );
+int closestIntersection( vec4 reflectedRay );
 
 int main( int argc, char* argv[] )
 {
 
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
+  // Load objects here and copy values to vector in update.
+  LoadTestModel( originalroom, originalbox );
 
   while ( Update())
     {
@@ -125,9 +137,8 @@ int main( int argc, char* argv[] )
 /*Place your drawing here*/
 void Draw(screen* screen)
 {
-  vector<Triangle> triangles;
-  vector<Triangle> boxes;
-  LoadTestModel( triangles, boxes );
+  vector<Triangle> triangles = originalroom;
+  vector<Triangle> boxes = originalbox;
   //std::vector<glm::ivec2> points;
 
   // Transform triangles to camera space.
@@ -148,13 +159,12 @@ void Draw(screen* screen)
   // Clip the list of triangles on all planes of the frustrum
   // 1: Left of camera  2: Right of camera  3: Bottom of camera  4: Top of camera
   // 5: Behind camera
-  vector<Triangle> clippedTriangles = clip(triangles, 1);
+  clippedTriangles = clip(triangles, 1);
   clippedTriangles = clip(clippedTriangles, 2);
   clippedTriangles = clip(clippedTriangles, 3);
   clippedTriangles = clip(clippedTriangles, 4);
   clippedTriangles = clip(clippedTriangles, 5);
   clippedTriangles = clip(clippedTriangles, 6);
-  printf("%lu\n",clippedTriangles.size() );
 
   /* Clear buffer */
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
@@ -163,10 +173,13 @@ void Draw(screen* screen)
   memset(depthBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(float));
 
   // Clear screen buffer.
-  memset(screenBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(vec3));
+  memset(screenBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(glm::vec3));
 
   // Clear shadow buffer.
   memset(shadowBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(int));
+
+  // Clear mirror buffer.
+  memset(mirrorBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(glm::vec3));
 
   // Go through all clipped triangles
   for( uint32_t i=0; i<clippedTriangles.size(); ++i ) {
@@ -182,6 +195,9 @@ void Draw(screen* screen)
      currentColor = clippedTriangles[i].color;
      currentNormal = clippedTriangles[i].normal;
      //currentReflectance = ??;
+
+     // if is mirror, calculate the closest intersection and save the colour.
+     isMirror = clippedTriangles[i].mirror;
 
      // Draw and colour the triangles.
      DrawPolygon( screen, vertices );
@@ -205,13 +221,13 @@ void Draw(screen* screen)
          screenBuffer[y][x] -= vec3(0.12f, 0.12f, 0.12f);
        }
        else {
-         screenBuffer[y][x] -= vec3(0.5f, 0.5f, 0.5f);
+         screenBuffer[y][x] -= vec3(0.3f, 0.3f, 0.3f);
        }
       }
-      PutPixelSDL(screen, x, y, (screenBuffer[y][x] +
-        screenBuffer[y-1][x] + screenBuffer[y+1][x] + screenBuffer[y][x-1] +
-        screenBuffer[y][x+1] + screenBuffer[y-1][x-1] + screenBuffer[y+1][x+1] +
-        screenBuffer[y+1][x-1] + screenBuffer[y-1][x+1])/9.0f);
+      PutPixelSDL(screen, x, y, antiAliasing(y,x));
+      if (mirrorBuffer[y][x].x > 0) {
+        // PutPixelSDL(screen, x, y, mirrorBuffer[y][x]);
+      }
     }
   }
 }
@@ -224,6 +240,7 @@ bool Update()
   int t2 = SDL_GetTicks();
   float dt = float(t2-t);
   t = t2;
+  printf("%f\n", dt);
 
   SDL_Event e;
   while(SDL_PollEvent(&e))
@@ -259,7 +276,6 @@ bool Update()
         break;
         /* Reduce surrounding brightness */
         case SDLK_1:
-        printf("YES");
           indirectLightPowerPerArea -= vec3(0.005f, 0.005f, 0.005f);
         break;
         /* Increase surrounding brightness */
@@ -414,22 +430,6 @@ void VertexShader( const Vertex& v, Pixel& p ) {
   p.x = x2D;
   p.y = y2D;
   p.zinv = 1/v.position.z;
-
-  // Compute illumination (vertex illumination)
-  // vec4 r = lightPos - v.position;
-  // vec3 vec3r = vec3(r);
-  // float r_magnitude = pow(r[0],2) + pow(r[1],2) + pow(r[2],2);
-  //
-  // vec3 normal = vec3(v.normal);
-  //
-  // float vecProduct = glm::dot(vec3r, normal);
-  // vec3 D = (lightPower * glm::max(vecProduct, 0.0f)) / (float)(4.0f * M_PI * r_magnitude);
-  //
-  // vec3 totalIllumination = D + indirectLightPowerPerArea;
-  //
-  // p.illumination = totalIllumination;
-
-  // Store 3D position to pixel for illumination (per pixel illumination)
   p.pos3d = v.position;
 }
 
@@ -448,7 +448,6 @@ void Interpolate( Pixel a, Pixel b, vector<Pixel>& result ) {
 
   float stepPos3dX = (b.pos3d.x - a.pos3d.x) / float(max(N-1,1));
   float stepPos3dY = (b.pos3d.y - a.pos3d.y) / float(max(N-1,1));
-  float stepPos3dZ = (b.pos3d.z - a.pos3d.z) / float(max(N-1,1));
 
   for( int i=0; i<N; ++i ) {
      result[i].x = floor(a.x + (step_x * i));
@@ -489,23 +488,23 @@ void PixelShader( const Pixel& p, screen* screen ) {
       switch (randColourSelect) {
         case 0:
         // Choose normal colour
-        // PutPixelSDL( screen, x, y, currentColor * calculateIllumination(p, currentNormal) );
         screenBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
         break;
         case 1:
         // Choose random colour
-        // PutPixelSDL( screen, x, y, randColour * calculateIllumination(p, currentNormal) );
         screenBuffer[y][x] = randColour * calculateIllumination(p, currentNormal);
         break;
         case 2:
         // Choose nightVision
-        // PutPixelSDL( screen, x, y, nightVision * calculateIllumination(p, currentNormal) );
         screenBuffer[y][x] = nightVision * calculateIllumination(p, currentNormal);
         break;
       }
     }
     else if (p.zinv > depthBuffer[y][x] && currentColor.x < 0) {
       shadowBuffer[y][x] = 1;
+    }
+    if (isMirror) {
+      //mirrorBuffer[y][x] = calculateIllumination(p, currentNormal) * findReflection(p);
     }
   }
 }
@@ -1311,163 +1310,6 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
       if (triangles[i].v0.z > 0.01f && triangles[i].v1.z > 0.01f && triangles[i].v2.z > 0.01f) {
         clippedTriangles.push_back(triangles[i]);
       }
-
-      // // CASE V0 IS IN
-      // else if (triangles[i].v0.z > 0.01f && triangles[i].v1.z <= 0.01f && triangles[i].v2.z <= 0.01f) {
-      //   // Get w values.
-      //   float z0 = triangles[i].v0.z;
-      //   float z1 = triangles[i].v1.z;
-      //   float z2 = triangles[i].v2.z;
-      //
-      //   // Calculate the line intersection with the plane to change vertex positions within the plane.
-      //   float t_01 = (0.01f-z0)/(z1 - z0);
-      //   printf("%f\n", t_01);
-      //   float t_02 = (0.01f-z0)/(z2 - z0);
-      //   printf("%f\n", t_02);
-      //
-      //   // Set new vertex positions.
-      //   printf("%f, %f, %f\n", triangles[i].v1.z, triangles[i].v0.z, t_01);
-      //   printf("\n" );
-      //   triangles[i].v1 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
-      //   triangles[i].v2 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
-      //   printf("%f, %f, %f, %f\n", triangles[i].v0.x, triangles[i].v0.y, triangles[i].v0.z, triangles[i].v0.w);
-      //   printf("%f, %f, %f, %f\n", triangles[i].v1.x, triangles[i].v1.y, triangles[i].v1.z, triangles[i].v1.w);
-      //   printf("%f, %f, %f, %f\n", triangles[i].v2.x, triangles[i].v2.y, triangles[i].v2.z, triangles[i].v2.w);
-      //   printf("\n" );
-      //
-      //   // Add new triangle to vector.
-      //   clippedTriangles.push_back(triangles[i]);
-      // }
-
-      // // CASE V1 IS IN
-      // else if (triangles[i].v0.w <= 0.01f && triangles[i].v1.w > 0.01f && triangles[i].v2.w <= 0.01f) {
-      //   // Get w values.
-      //   float w0 = triangles[i].v0.w;
-      //   float w1 = triangles[i].v1.w;
-      //   float w2 = triangles[i].v2.w;
-      //
-      //   // Calculate the line intersection with the plane to change vertex positions within the plane.
-      //   float t_10 = w1/(w1 - w0);
-      //   float t_12 = w1/(w1 - w2);
-      //
-      //   // Set new vertex positions.
-      //   triangles[i].v0 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
-      //   triangles[i].v2 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
-      //
-      //   // Add new triangle to vector.
-      //   clippedTriangles.push_back(triangles[i]);
-      // }
-
-      // // CASE V2 IS IN
-      // else if (triangles[i].v0.w <= 0.01f && triangles[i].v1.w <= 0.01f && triangles[i].v2.w > 0.01f) {
-      //   // Get w values.
-      //   float w0 = triangles[i].v0.w;
-      //   float w1 = triangles[i].v1.w;
-      //   float w2 = triangles[i].v2.w;
-      //
-      //   // Calculate the line intersection with the plane to change vertex positions within the plane.
-      //   float t_21 = w2/(w2 - w1);
-      //   float t_20 = w2/(w2 - w0);
-      //
-      //   // Set new vertex positions.
-      //   triangles[i].v1 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
-      //   triangles[i].v0 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
-      //
-      //   // Add new triangle to vector.
-      //   clippedTriangles.push_back(triangles[i]);
-      // }
-      //         /* WHEN 2 VERTICES ARE INSIDE, SPLIT INTO 2 TRIANGLES */
-      //
-      // // CASE V0 AND V1 ARE IN
-      // else if (triangles[i].v0.w > 0.01f && triangles[i].v1.w > 0.01f && triangles[i].v2.w <= 0.01f) {
-      //   // Get w values.
-      //   float w0 = triangles[i].v0.w;
-      //   float w1 = triangles[i].v1.w;
-      //   float w2 = triangles[i].v2.w;
-      //
-      //   // Calculate the line intersection with the plane to change vertex positions within the plane.
-      //   float t_12 = w1/(w1 - w2);
-      //   float t_02 = w0/(w0 - w2);
-      //
-      //   // Store new calculated vertices here.
-      //   vec4 newPoint_12;
-      //   vec4 newPoint_02;
-      //   newPoint_12 = triangles[i].v1 + t_12*(triangles[i].v2-triangles[i].v1);
-      //   newPoint_02 = triangles[i].v0 + t_02*(triangles[i].v2-triangles[i].v0);
-      //
-      //   // Set outside vertex to one of the new vertices.
-      //   triangles[i].v2 = newPoint_02;
-      //
-      //   // Create a new triangle with the new vertices and one of the inside vertex.
-      //   // Set the normals to be the same.
-      //   Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
-      //   extraTriangle.normal = triangles[i].normal;
-      //
-      //   // Add the new triangles to vector.
-      //   clippedTriangles.push_back(triangles[i]);
-      //   clippedTriangles.push_back(extraTriangle);
-      // }
-      //
-      // // CASE V0 AND V2 ARE IN
-      // else if (triangles[i].v0.w > 0.01f && triangles[i].v1.w <= 0.01f && triangles[i].v2.x > 0.01f) {
-      //   printf("YES\n" );
-      //   // Get w values.
-      //   float w0 = triangles[i].v0.w;
-      //   float w1 = triangles[i].v1.w;
-      //   float w2 = triangles[i].v2.w;
-      //
-      //   // Calculate the line intersection with the plane to change vertex positions within the plane.
-      //   float t_01 = w0/(w0 - w1);
-      //   float t_21 = w2/(w2 - w1);
-      //
-      //   // Store new calculated vertices here.
-      //   vec4 newPoint_01;
-      //   vec4 newPoint_21;
-      //   newPoint_01 = triangles[i].v0 + t_01*(triangles[i].v1-triangles[i].v0);
-      //   newPoint_21 = triangles[i].v2 + t_21*(triangles[i].v1-triangles[i].v2);
-      //
-      //   // Set outside vertex to one of the new vertices.
-      //   triangles[i].v1 = newPoint_01;
-      //
-      //   // Create a new triangle with the new vertices and one of the inside vertex.
-      //   // Set the normals to be the same.
-      //   Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
-      //   extraTriangle.normal = triangles[i].normal;
-      //
-      //   // Add the new triangles to vector.
-      //   clippedTriangles.push_back(triangles[i]);
-      //   clippedTriangles.push_back(extraTriangle);
-      // }
-      //
-      // // CASE V1 AND V2 ARE IN
-      // else if (triangles[i].v0.w <= 0.01f && triangles[i].v1.w > 0.01f && triangles[i].v2.w > 0.01f) {
-      //   // Get w values.
-      //   float w0 = triangles[i].v0.w;
-      //   float w1 = triangles[i].v1.w;
-      //   float w2 = triangles[i].v2.w;
-      //
-      //   // Calculate the line intersection with the plane to change vertex positions within the plane.
-      //   float t_10 = w1/(w1 - w0);
-      //   float t_20 = w2/(w2 - w0);
-      //
-      //   // Store new calculated vertices here.
-      //   vec4 newPoint_10;
-      //   vec4 newPoint_20;
-      //   newPoint_10 = triangles[i].v1 + t_10*(triangles[i].v0-triangles[i].v1);
-      //   newPoint_20 = triangles[i].v2 + t_20*(triangles[i].v0-triangles[i].v2);
-      //
-      //   // Set outside vertex to one of the new vertices.
-      //   triangles[i].v0 = newPoint_10;
-      //
-      //   // Create a new triangle with the new vertices and one of the inside vertex.
-      //   // Set the normals to be the same.
-      //   Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
-      //   extraTriangle.normal = triangles[i].normal;
-      //
-      //   // Add the new triangles to vector.
-      //   clippedTriangles.push_back(triangles[i]);
-      //   clippedTriangles.push_back(extraTriangle);
-      // }
     }
     break;
     // Clip at far z plane (now set to z to 10)
@@ -1670,14 +1512,6 @@ vector<Triangle> createShadowVolume( vector<Triangle>& triangles ) {
     Triangle shadowVolume6(v2, n2, v0, vec3(-1.0f,-1.0f,-1.0f));
     Triangle shadowVolume7(n2, v0, n0, vec3(-1.0f,-1.0f,-1.0f));
 
-    // Compute normals of all triangles.
-    shadowVolume2.ComputeNormal();
-    shadowVolume3.ComputeNormal();
-    shadowVolume4.ComputeNormal();
-    shadowVolume5.ComputeNormal();
-    shadowVolume6.ComputeNormal();
-    shadowVolume7.ComputeNormal();
-
     // Add shadow triangles to the vector.
     trianglesWithShadows.push_back(shadowVolume2);
     trianglesWithShadows.push_back(shadowVolume3);
@@ -1690,6 +1524,7 @@ vector<Triangle> createShadowVolume( vector<Triangle>& triangles ) {
   return trianglesWithShadows;
 }
 
+// Take average values of the surrounding pixels.
 float surroundingShadowSum(int y, int x) {
   float val = 0;
   val = shadowBuffer[y][x] + shadowBuffer[y-1][x] + shadowBuffer[y-1][x-1] + shadowBuffer[y-1][x+1] +
@@ -1698,4 +1533,101 @@ float surroundingShadowSum(int y, int x) {
   val /= 9.0f;
 
   return val;
+}
+
+// Take average values of the surrounding pixels.
+vec3 antiAliasing(int y, int x) {
+  vec3 val = vec3(0.0f, 0.0f, 0.0f);
+  val = screenBuffer[y][x] + screenBuffer[y-1][x] + screenBuffer[y+1][x]  + screenBuffer[y][x-1] +
+        screenBuffer[y][x+1];
+  val /= 9.0f;
+
+  return val;
+}
+
+// Get colour of reflected ray.
+vec3 findReflection(const Pixel& p) {
+  // Get incident ray.
+  vec4 incident = p.pos3d - cameraPos;
+  // Get reflected ray.
+  vec4 reflected = incident - currentNormal * (2 * glm::dot(incident, currentNormal));
+
+  // shoot ray and find closest intersection.
+  int index = closestIntersection(reflected);
+  reflection = clippedTriangles[index].color;
+  // for (int i = 0; i < )
+  return reflection;
+}
+
+// As in raytracer, get the closest intersection for the ray from the mirror.
+int closestIntersection(vec4 reflectedRay) {
+  // Store the index of the triangle the ray hits.
+  int index;
+  // Store the current closest distance of intersection.
+  float distanceStore;
+  // Don't check for intersection for large t
+  float bound = std::numeric_limits<float>::max();
+
+  distanceStore = bound;
+  vec3 start3 = vec3(cameraPos);
+  vec3 dir3 = vec3(reflectedRay);
+
+  for (int i = 0; i < clippedTriangles.size(); i++) {
+    vec4 v0 = clippedTriangles[i].v0;
+    vec4 v1 = clippedTriangles[i].v1;
+    vec4 v2 = clippedTriangles[i].v2;
+
+    vec3 e1 = vec3(v1.x - v0.x ,v1.y - v0.y,v1.z - v0.z);
+    vec3 e2 = vec3(v2.x - v0.x ,v2.y - v0.y,v2.z - v0.z);
+    // vec3 b = vec3(start.x-v0.x, start.y-v0.y, start.z-v0.z);
+
+    // Currently: 55000ms without -O3, 600ms with -O3
+    // With Cramer's rule: 47000ms without -O3, 430ms with -O3
+    glm::mat3 system( -dir3, e1, e2 );
+
+    // Use Cramer's rule to produce just t (x[0]). If t is negative, then
+    // return false. Else, continue with calculation
+
+    // Using the linear equation:
+    // (-dir, e1, e2) (t, u, v) = s - v0
+    vec4 solutions = cameraPos - v0;
+    vec3 solutions3 = vec3(solutions[0], solutions[1], solutions[2]);
+
+    // Solving t in using Cramer's rule:
+    // -dir[0]t + e1[0]u + e2[0]v = solutions[0]
+    // -dir[1]t + e1[1]u + e2[1]v = solutions[0]
+    // -dir[2]t + e1[2]u + e2[2]v = solutions[0]
+
+    // Where t = det(system_t)/det(system)
+    glm::mat3 system_t( solutions3, e1, e2 );
+    float t = glm::determinant(system_t)/glm::determinant(system);
+    float d = t * glm::length(dir3);
+
+
+    // If the distance is negative, the intersection does not occur, so carry on to the next one.
+    if (d < 0.0f) continue;
+    // Do distance checks earlier to move on quicker if possible
+    else if (d >= distanceStore || d > bound) continue;
+
+
+    // Similar to t, calculate u and v
+    glm::mat3 system_u( -dir3, solutions3, e2 );
+    float u = glm::determinant(system_u)/glm::determinant(system);
+
+    glm::mat3 system_v( -dir3, e1, solutions3 );
+    float v = glm::determinant(system_v)/glm::determinant(system);
+
+    // x = (t, u, v)
+    // vec3 x = glm::inverse( system ) * b;
+
+    vec4 position = cameraPos + vec4(t * dir3, 0);
+
+    bool check = (u >= 0) && (v >= 0) && ((u + v) <= 1);
+
+    if (check) {
+      distanceStore = d;
+      index = i;
+    }
+  }
+  return index;
 }

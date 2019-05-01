@@ -15,6 +15,7 @@ public:
 	glm::vec4 v2;
 	glm::vec4 normal;
 	glm::vec3 color;
+	bool mirror = false;
 
 	Triangle( glm::vec4 v0, glm::vec4 v1, glm::vec4 v2, glm::vec3 color )
 		: v0(v0), v1(v1), v2(v2), color(color)
@@ -78,16 +79,24 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 	room.push_back( Triangle( C, D, B, green ) );
 
 	// Left wall
-	room.push_back( Triangle( A, E, C, purple ) );
-	room.push_back( Triangle( C, E, G, purple ) );
+	Triangle leftwall1 ( A, E, C, purple );
+	leftwall1.mirror = true;
+	room.push_back( leftwall1 );
+	Triangle leftwall2 ( C, E, G, purple );
+	leftwall2.mirror = true;
+	room.push_back( leftwall2 );
 
 	// Right wall
 	room.push_back( Triangle( F, B, D, yellow ) );
 	room.push_back( Triangle( H, F, D, yellow ) );
 
 	// Ceiling
-	room.push_back( Triangle( E, F, G, cyan ) );
-	room.push_back( Triangle( F, H, G, cyan ) );
+	Triangle ceiling1 ( E, F, G, cyan );
+	ceiling1.mirror = false;
+	room.push_back( ceiling1 );
+	Triangle ceiling2( F, H, G, cyan );
+	ceiling2.mirror = false;
+	room.push_back( ceiling2 );
 
 	// Back wall
 	room.push_back( Triangle( G, D, C, white ) );
