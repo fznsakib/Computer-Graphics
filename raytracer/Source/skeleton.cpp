@@ -20,8 +20,8 @@ SDL_Event event;
 // Default - 320 x 256
 // Medium  - 800 x 640
 // Change to 1280 x 720 later with focalLength 1024 and z = -4.2
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 256
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 640
 #define FULLSCREEN_MODE false
 
 // Maximum reflection/refraction depth
@@ -62,8 +62,6 @@ struct Photon {
   vec4 position;
   vec4 direction;
   vec3 power;
-  float phi;
-  float theta;
   bool flag;   //flag used in kdtree
 };
 
@@ -74,8 +72,8 @@ struct Photon {
 /* VARIABLES                                                                   */
 /* ----------------------------------------------------------------------------*/
 
-float focalLength = 256;
-vec4 cameraPos( 0.0, 0.0, -3.0, 1.0);
+float focalLength = 1024;
+vec4 cameraPos( 0.0, 0.0, -4.2, 1.0);
 vector<Light> lights;
 float yaw = 0.0;
 mat4 R(1.0f);
@@ -115,7 +113,7 @@ int main( int argc, char* argv[] )
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.2, -0.7, 1.0 );
-  light.colour = vec3( 6.0f * vec3( 1, 1, 1 ));
+  light.colour = vec3( 50.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
@@ -158,10 +156,20 @@ void Draw(screen* screen) {
       // Apply global photon mapping
       Intersection intersection;
       vec3 colour;
+      bool lightCheck = false;
 
       if (ClosestIntersection(cameraPos, dir, intersection)) {
         float distance;
-        float radius = 0.5f;
+        float radius = 0.2f;
+
+        // Check if intersecting with light emitter
+        lightCheck = intersection.position.x >  -0.2f  &&
+                     intersection.position.x <   0.2f  &&
+                     intersection.position.y >=  -1.0f  &&
+                     intersection.position.y <  -0.95f  &&
+                     intersection.position.z >  -0.8f  &&
+                     intersection.position.z <  -0.4f;
+
 
         for (int i = 0; i < globalPhotonMap.size(); i++) {
           distance = glm::distance(intersection.position, globalPhotonMap[i].position);
@@ -169,50 +177,55 @@ void Draw(screen* screen) {
           if (distance < radius) colour += globalPhotonMap[i].power;
         }
       }
-      // PutPixelSDL(screen, u, v, colour);
-
-      pixelColour = vec3 (0.0f, 0.0f, 0.0f);
-      vec3 indirectLight = 0.5f * vec3(1, 1, 1);
-      bool validRay = false;
-
-      // Trace multiple rays around each ray and average color for anti aliasing
-      // Change to 4 x 4 later
-      for (int i = -2; i <= 2; ++i) {
-        for (int j = -2; j <= 2; ++j ) {
-          // Multiply i and j by distance to surrounding rays being used
-          float multiplier = 0.25;
-          vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
-
-          Intersection intersection;
-          int depth = 0;
-          bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection);
-
-          // If light intersects with object then draw it
-          if (closestIntersection == true) {
-            validRay = true;
-            vec3 objectColour = intersection.colour;
-
-            // Direct illumination
-            for (int i = 0; i < lights.size(); i++) {
-              pixelColour += DirectLight( intersection, lights[i] );
-            }
-
-            // Indirect illumination for diffuse objects
-            if (intersection.material[1] == 0.0f) {
-              pixelColour = IndirectLight(pixelColour, objectColour, indirectLight);
-            }
-          }
-        }
+      if (lightCheck) {
+        PutPixelSDL(screen, u, v, vec3(1.0f, 1.0f, 1.0f));
       }
-      if (validRay == true) {
-        // Average light for the multiple rays for anti aliasing
-        vec3 averageLight = pixelColour/16.0f;
-        colour * averageLight;
-        PutPixelSDL(screen, u, v, averageLight);
-      }
-      else {
-        PutPixelSDL(screen, u, v, black);
-      }
+      else PutPixelSDL(screen, u, v, colour);
+
+      // pixelColour = vec3 (0.0f, 0.0f, 0.0f);
+      // vec3 indirectLight = 0.5f * vec3(1, 1, 1);
+      // bool validRay = false;
+      //
+      // // Trace multiple rays around each ray and average color for anti aliasing
+      // // Change to 4 x 4 later
+      // for (int i = -2; i <= 2; ++i) {
+      //   for (int j = -2; j <= 2; ++j ) {
+      //     // Multiply i and j by distance to surrounding rays being used
+      //     float multiplier = 0.25;
+      //     vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
+      //
+      //     Intersection intersection;
+      //     int depth = 0;
+      //     bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection);
+      //
+      //     // If light intersects with object then draw it
+      //     if (closestIntersection == true) {
+      //       validRay = true;
+      //       vec3 objectColour = intersection.colour;
+      //
+      //       // Direct illumination
+      //       for (int i = 0; i < lights.size(); i++) {
+      //         if (DirectLight( intersection, lights[i] ) != vec3(0.0f, 0.0f, 0.0f)) {
+      //           pixelColour += DirectLight( intersection, lights[i] );
+      //         }
+      //       }
+      //
+      //       // Indirect illumination for diffuse objects
+      //       if (intersection.material[1] == 0.0f) {
+      //         pixelColour = IndirectLight(pixelColour, objectColour, indirectLight);
+      //       }
+      //     }
+      //   }
+      // }
+      // if (validRay == true) {
+      //   // Average light for the multiple rays for anti aliasing
+      //   vec3 averageLight = pixelColour/16.0f;
+      //   averageLight *= colour;
+      //   PutPixelSDL(screen, u, v, averageLight);
+      // }
+      // else {
+      //   PutPixelSDL(screen, u, v, black);
+      // }
     }
   }
 }
@@ -521,7 +534,7 @@ vec3 DirectLight( const Intersection &i, Light light ) {
   // so that it doesn't intersect with itself
   if (ClosestIntersection(i.position + (normal * 0.00001f), direction, intersection)) {
     if (intersection.distance < r_magnitude) {
-      return vec3(0.0,0.0,0.0);
+      return vec3(0.0f,0.0f,0.0f);
     }
   }
 
@@ -564,7 +577,7 @@ void PhotonEmission( const int noOfPhotons ) {
     } while ((x*x) + (y*y) + (z*z) > 1);
 
     // Change to square light later
-    photon.position = vec4(RandomFloat(-0.2f, 0.2f), -0.95f, RandomFloat(-0.2f, 0.2f), 1.0f);
+    photon.position = vec4(RandomFloat(-0.2f, 0.2f), -0.95f, RandomFloat(-0.8f, -0.4f), 1.0f);
     float u = RandomFloat(0.0f, 1.0f);
     float v = 2 * M_PI * RandomFloat(0.0f, 1.0f);
     photon.direction = vec4((cos(v) * sqrt(u)), sqrt(1- u), (sin(v) * sqrt(u)), 1.0f);
@@ -616,7 +629,7 @@ void TracePhoton(Photon &photon) {
       photon.direction = randomDirection;
     }
     // SPECULAR REFLECTION
-    else if (random < (intersection.material[1])) {
+    else if (random < (intersection.material[0] + intersection.material[1])) {
       // Reflect photon with new position in new direction
       photon.position = intersection.position;
       GetReflectedDirection(photon.direction, intersection.normal, photon.direction);
