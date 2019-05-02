@@ -30,7 +30,7 @@ SDL_Event event;
 
 
 // Maximum reflection/refraction depth
-#define MAX_RAY_DEPTH 5
+#define MAX_RAY_DEPTH 20
 
 // Done
 // - Anti aliasing
@@ -122,6 +122,7 @@ void PhotonEmission( const int noOfPhotons );
 void TracePhoton( Photon& photon );
 void GetReflectedDirection(const vec4& incident, const vec4& normal, vec4& reflected);
 void GetRefractedDirection(const vec4& incident, const vec4& normal, const float ior, vec4& refracted);
+void GetFresnel(const vec4& incident, const vec4& normal, const float& ior, float& kr);
 vec4 GenerateRandomDirection();
 KDTree* BalanceTree( vector<Photon*> photonPointers );
 void LocatePhotons( Photon* rootNode, vector<Photon*> maxHeap, Intersection intersection, float& maxSearchDistance );
@@ -314,7 +315,7 @@ int main( int argc, char* argv[] ) {
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.2, -0.7, 1.0 );
-  light.colour = vec3( 14.0f * vec3( 1, 1, 1 ));
+  light.colour = vec3( 10.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
@@ -354,54 +355,6 @@ int main( int argc, char* argv[] ) {
   return 0;
 }
 
-vec3 CastRay( const vec4 &position, const vec4 &dir, const int& depth ) {
-  if (depth > MAX_RAY_DEPTH) return black;
-
-  vec3 hitColour = vec3(0.0f, 0.0f, 0.0f);
-  Intersection intersection;
-
-  // Check if ray intersects with anything
-  if (ClosestIntersection(position, dir, intersection)) {
-    // Decide what to do depending on material
-
-    // DIFFUSE
-    if(intersection.material[0] == 0.5f) {
-      vec3 illumination = vec3(0.0f, 0.0f, 0.0f);
-
-      // Compute direct light
-      for (int i = 0; i < lights.size(); i++) {
-        if (DirectLight( intersection, lights[i] ) != vec3(0.0f, 0.0f, 0.0f)) {
-          illumination += DirectLight( intersection, lights[i] );
-        }
-      }
-
-      // Add direct light
-      hitColour += illumination;
-
-      // Add indirect light
-      hitColour = IndirectLight(hitColour, intersection.colour, indirectLight);
-    }
-    // ONLY REFLECTION
-    else if(intersection.material[1] > 0.0f && intersection.material[2] == 0.0f) {
-
-      vec4 reflectedDir;
-      GetReflectedDirection(dir, intersection.normal, reflectedDir);
-      glm::normalize(reflectedDir);
-      // std::cout << "reflection" << '\n';
-      hitColour += 0.8f * CastRay(intersection.position + (intersection.normal * 0.0001f), reflectedDir, depth + 1);
-    }
-    // REFLECTION AND REFRACTION
-    else if(intersection.material[1] > 0.0f && intersection.material[2] > 0.0f) {
-      // std::cout << "refraction" << '\n';
-    }
-  }
-  // No intersection, so return black
-  else {
-    hitColour = black;
-  }
-
-  return hitColour;
-}
 
 
 /*Place your drawing here*/
@@ -527,7 +480,6 @@ void Draw(screen* screen) {
 }
 
 
-
 /*Place updates of parameters here*/
 bool Update() {
   static int t = SDL_GetTicks();
@@ -618,6 +570,91 @@ bool Update() {
 }
 
 
+vec3 CastRay( const vec4 &position, const vec4 &dir, const int& depth ) {
+  if (depth > MAX_RAY_DEPTH) return black;
+
+  vec3 hitColour = vec3(0.0f, 0.0f, 0.0f);
+  Intersection intersection;
+
+  // Check if ray intersects with anything
+  if (ClosestIntersection(position, dir, intersection)) {
+    // Decide what to do depending on material
+
+    // DIFFUSE
+    if(intersection.material[0] == 0.5f) {
+      vec3 illumination = vec3(0.0f, 0.0f, 0.0f);
+
+      // Compute direct light
+      for (int i = 0; i < lights.size(); i++) {
+        if (DirectLight( intersection, lights[i] ) != vec3(0.0f, 0.0f, 0.0f)) {
+          illumination += DirectLight( intersection, lights[i] );
+        }
+      }
+
+      // Add direct light
+      hitColour += illumination;
+
+      // Add indirect light
+      hitColour = IndirectLight(hitColour, intersection.colour, indirectLight);
+    }
+    // ONLY REFLECTION
+    else if(intersection.material[1] > 0.0f && intersection.material[2] == 0.0f) {
+
+      // Compute the new reflected direction
+      vec4 reflectedDir;
+      GetReflectedDirection(dir, intersection.normal, reflectedDir);
+      glm::normalize(reflectedDir);
+
+      hitColour += 0.8f * CastRay(intersection.position + (intersection.normal * 0.00001f), reflectedDir, depth + 1);
+    }
+    // REFLECTION AND REFRACTION
+    else if(intersection.material[1] > 0.0f && intersection.material[2] > 0.0f) {
+      vec3 reflectionColour = vec3(0.0f, 0.0f, 0.0f);
+      vec3 refractionColour = vec3(0.0f, 0.0f, 0.0f);
+
+      // Index of refraction for glass
+      float ior = 1.2;
+
+      // Compute fresnel
+      // float kr = 1.0f;
+      // GetFresnel(dir, intersection.normal, ior, kr);
+
+      bool outside = (glm::dot(dir, intersection.normal) < 0);
+      vec4 offset = 0.00001f * intersection.normal;
+
+      // Compute refraction ray if it is not a case of total internal reflection
+      // if (kr < 1) {
+        vec4 refractedDir;
+        GetRefractedDirection(dir, intersection.normal, ior, refractedDir);
+        glm::normalize(refractedDir);
+        vec4 refractionRayOrigin = outside ? intersection.position - offset : intersection.position + offset;
+        // Recursively cast refracted ray until depth is reached
+        refractionColour = CastRay(refractionRayOrigin, refractedDir, depth + 1);
+      // }
+
+
+      vec4 reflectedDir;
+      GetReflectedDirection(dir, intersection.normal, reflectedDir);
+      glm::normalize(reflectedDir);
+      vec4 reflectionRayOrigin = outside ? intersection.position + offset : intersection.position - offset;
+      reflectionColour = CastRay(reflectionRayOrigin, reflectedDir, depth + 1);
+
+      // Mix the relection and refraction to get one colour
+      // hitColour += (reflectionColour * kr) + (refractionColour * (1 - kr));
+      // hitColour += refractionColour * (1 - kr);
+      hitColour += refractionColour;
+
+    }
+  }
+  // No intersection, so return black
+  else {
+    hitColour = black;
+  }
+
+  return hitColour;
+}
+
+
 bool ClosestIntersection( vec4 start, vec4 dir,
                           Intersection& closestIntersection) {
 
@@ -681,79 +718,6 @@ bool ClosestIntersection( vec4 start, vec4 dir,
     else {
       return true;
     }
-
-    // REFLECTION AND REFRACTION
-    // If the normal and the view direction are not opposite to each other
-    // reverse the normal direction. That also means we are inside the sphere so set
-    // the inside bool to true. Finally reverse the sign of IdotN which we want
-    // positive.
-    // bool inside = false;
-    // if (glm::dot(dir, closestIntersection.normal) > 0) {
-    //   closestIntersection.normal = -closestIntersection.normal;
-    //   inside = true;
-    // }
-    //
-    // vec3 indirectLight = 0.5f * vec3(1, 1, 1);
-    // float specular = closestIntersection.material[1];
-    // float transmission = closestIntersection.material[2];
-    // Intersection reflection;
-    // Intersection refraction;
-    //
-    // // Check if reflective or refractive
-    // int depth = 0;
-    // if ((specular > 0.0f || transmission > 0.0f) && depth < MAX_RAY_DEPTH) {
-    //   float facingratio = -glm::dot(dir, closestIntersection.normal);
-    //
-    //   // Reflection/refraction mix value
-    //   float fresnelEffect = mix(pow(1 - facingratio, 3), 1, 0.1);
-    //
-    //   // Calculate new reflected direction of ray
-    //   vec4 reflectionDir;
-    //   GetReflectedDirection(dir, closestIntersection.normal, reflectionDir);
-    //
-    //   // Trace reflected ray
-    //   // depth += 1;
-    //   if (ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection)) {
-    //     vec3 colour = IndirectLight(closestIntersection.colour, reflection.colour, indirectLight);
-    //     reflection.colour = colour;
-    //   }
-    //
-    //   // Check if refractive
-    //   if (transmission > 0.0f) {
-    //     // Compute index of refraction depending on whether light is inside or outside object
-    //     float ior = 1.5;
-    //     float eta = (inside) ? ior : 1 / ior;
-    //
-    //     // Calculate new refracted direction of ray
-    //     vec4 refractionDir;
-    //     GetRefractedDirection(dir, closestIntersection.normal, eta, refractionDir);
-    //     glm::normalize(refractionDir);
-    //
-    //     // Trace refracted ray
-    //     // depth += 1;
-    //     ClosestIntersection(closestIntersection.position - (closestIntersection.normal * 0.00001f), refractionDir, refraction);
-    //   }
-    //
-    //   // std::cout << "reflection colour: " << reflection.colour.x << reflection.colour.y << reflection.colour.z << '\n';
-    //   // std::cout << "refraction colour: " << refraction.colour.x << refraction.colour.y << refraction.colour.z << '\n';
-    //
-    //   // std::cout << fresnelEffect << '\n';
-    //
-    //   // Now compute the mix of reflection and refraction colours
-    //   // vec3 computedColour = ((reflection.colour * fresnelEffect) +
-    //   //                       (refraction.colour * (1 - fresnelEffect) * transmission)
-    //   //                       * closestIntersection.colour);
-    //
-    //   // std::cout << refraction.colour.x << '\n';
-    //   vec3 computedColour = reflection.colour + refraction.colour;
-    //   // vec3 computedColour = refraction.colour;
-    //
-    //   // std::cout << computedColour.x << computedColour.y << computedColour.z << '\n';
-    //
-    //   closestIntersection.colour += computedColour;
-    // }
-
-    // return true;
   }
 
 
@@ -894,11 +858,64 @@ void GetReflectedDirection(const vec4& incident, const vec4& normal, vec4& refle
 
 
 void GetRefractedDirection(const vec4& incident, const vec4& normal, const float ior, vec4& refracted) {
-  float cosi = -(glm::dot(normal, incident));
-  float k = (1 - ior) * ior * (1 - cosi * cosi);
 
-  refracted = (incident * ior) + normal * (ior *  cosi - sqrt(k));
+  float cosi = glm::clamp(-1.0f, 1.0f, glm::dot(normal, incident));
+  // float cosi = -(glm::dot(normal, incident));
+
+  // Refraction index for outside and inside the object
+  float etai = 1, etat = ior;
+
+  vec4 n = normal;
+
+  if (cosi < 0) {
+    cosi = -cosi;
+  }
+  else {
+    std::swap(etai, etat);
+    n = -normal;
+  }
+
+  float eta = etai / etat;
+  float k = 1 - eta * eta * (1 - cosi * cosi);
+  // return k < 0 ? 0 : eta * incident + (eta * cosi - sqrtf(k)) * n;
+
+  eta = 2.0f - eta;
+  cosi = -(glm::dot(normal, incident));
+
+  // If angle greater than critical (k is negative) angle so there is not refraction
+  if (k < 0) refracted = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+  // else       refracted = eta * incident + (eta * cosi - sqrtf(k)) * n;
+  else refracted = (incident * eta - normal * (-cosi + eta * cosi));
+
   glm::normalize(refracted);
+}
+
+
+void GetFresnel(const vec4& incident, const vec4& normal, const float& ior, float& kr) {
+
+  float cosi = glm::clamp(-1.0f, 1.0f, glm::dot(incident, normal));
+  float etai = 1, etat = ior;
+
+  if (cosi > 0) {
+    std::swap(etai, etat);
+  }
+
+  // Compute sini using Snell's law
+  float sint = etai / etat * sqrtf(std::max(0.f, 1 - cosi * cosi));
+  // Total internal reflection
+  if (sint >= 1) {
+      kr = 1;
+  }
+  else {
+      float cost = sqrtf(std::max(0.f, 1 - sint * sint));
+      cosi = fabsf(cosi);
+      float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
+      float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
+      kr = (Rs * Rs + Rp * Rp) / 2;
+  }
+
+  // Due to conservation of energy, amout of refraction is:
+  // kt = 1 - kr;
 }
 
 
