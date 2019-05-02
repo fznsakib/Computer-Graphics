@@ -219,8 +219,8 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	triangles.push_back( Triangle( C, D, B, white, matte ) );
 
 	// Left wall
-	triangles.push_back( Triangle( A, E, C, red, matte ) );
-	triangles.push_back( Triangle( C, E, G, red, matte ) );
+	triangles.push_back( Triangle( A, E, C, cyan, matte ) );
+	triangles.push_back( Triangle( C, E, G, cyan, matte ) );
 
 	// Right wall
 	triangles.push_back( Triangle( F, B, D, cyan, matte ) );
@@ -231,8 +231,8 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	triangles.push_back( Triangle( F, H, G, white, matte ) );
 
 	// Back wall
-	triangles.push_back( Triangle( G, D, C, white, matte ) );
-	triangles.push_back( Triangle( G, H, D, white, matte ) );
+	triangles.push_back( Triangle( G, D, C, red, matte ) );
+	triangles.push_back( Triangle( G, H, D, red, matte ) );
 
 	// ---------------------------------------------------------------------------
 	// Short block
@@ -341,7 +341,7 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
   radius = 0.4;
 	spheres.push_back(Sphere(centre, radius, black, chrome));
 
-	centre = vec3(-0.3, 0.6, -0.8);
+	centre = vec3(-0.5, 0.6, -0.8);
 	radius = 0.3;
 	spheres.push_back(Sphere(centre, radius, black, glass));
 
