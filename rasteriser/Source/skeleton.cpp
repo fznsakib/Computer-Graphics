@@ -37,8 +37,11 @@ mat4 R(1.0f);
 vec3 currentColor;
 // Stores depth information of screen pixels. This is stored as 1/z.
 float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+// Store screen information to allow altering and antiAliasing before putting pixel on screen.
 vec3 screenBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+// Store information on areas where shadows exist.
 int shadowBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+// Store image with various indirect light values to produce HDR image.
 vec3 lowLightBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 vec3 highLightBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 
@@ -50,12 +53,6 @@ vec4 sceneCoordinatesLightPos(0, -0.5, 0, 1);
 vec3 lightPower = 20.0f*vec3( 1, 1, 1 );
 vec3 indirectLightPowerPerArea = 0.15f*vec3( 1, 1, 1 );
 
-// Store values to run check against normals
-vec3 upVec(0.0f, 1.0f, 0.0f);
-vec3 leftVec(1.0f, 0.0f, 0.0f);
-vec3 rightVec(-1.0f, 0.0f, 0.0f);
-vec3 downVec(0.0f, -1.0f, 0.0f);
-
 // Normal and reflectance values to be passed to PixelShader
 vec4 currentNormal;
 vec3 currentReflectance;
@@ -63,7 +60,7 @@ int objectIndex;
 int objectHeight;
 int objectWidth;
 
-// Store texture and normal map here
+// Store texture, occlusion, opacity and normal map here
 cv:: Mat marble;
 cv:: Mat woven;
 cv:: Mat woven_ambientOcclusion;
@@ -93,15 +90,12 @@ struct Pixel
   int x;
   int y;
   float zinv;
-  //vec3 illumination;
   vec4 pos3d;
 };
 
 struct Vertex
 {
   vec4 position;
-  //vec4 normal;
-  //glm::vec3 reflectance;
 };
 
 /* ----------------------------------------------------------------------------*/
@@ -135,28 +129,32 @@ int main( int argc, char* argv[] )
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
   // Load objects here and copy values to vector in update.
   LoadTestModel( originalroom, originalbox );
-  // load textures.
+
+  /*-------------------------- load textures. -------------------------------*/
   // MARBLE
   marble = cv::imread("Textures/Marble2000x2000.jpg", CV_LOAD_IMAGE_UNCHANGED);
-  // WOVEN
+
+  // WOVEN WOOD
   woven = cv::imread("Textures/woven1024x1024.jpg", CV_LOAD_IMAGE_UNCHANGED);
   woven_ambientOcclusion = cv::imread("Textures/Wood_wicker_003_ambientOcclusion.jpg", CV_LOAD_IMAGE_UNCHANGED);
   woven_opacity = cv::imread("Textures/Wood_wicker_003_opacity.jpg", CV_LOAD_IMAGE_UNCHANGED);
   wovenNormal = cv::imread("Textures/Wood_wicker_003_normal.jpg", CV_LOAD_IMAGE_UNCHANGED);
+
   // METAL GRILL
   metalGrill = cv::imread("Textures/Metal_Grill_002_basecolor.jpg", CV_LOAD_IMAGE_UNCHANGED);
   metalGrillOpacity = cv::imread("Textures/Metal_Grill_002_opacity.jpg", CV_LOAD_IMAGE_UNCHANGED);
   metalGrillNormalMap = cv::imread("Textures/Metal_Grill_002_normal.jpg", CV_LOAD_IMAGE_UNCHANGED);
-  // imshow("THIS", metalGrillNormalMap);
+
   /// Convert the image to Gray
   cv::cvtColor( metalGrillOpacity, metalGrillOpacity_gray, CV_BGR2GRAY );
   cv::cvtColor( woven_ambientOcclusion, woven_ambientOcclusion_gray, CV_BGR2GRAY );
   cv::cvtColor( woven_opacity, woven_opacity_gray, CV_BGR2GRAY);
-  // Threshold
+
+  // Threshold images to binary map
   cv::threshold( metalGrillOpacity_gray, metalGrillOpacity, 100, 255, 0 );
   cv::threshold( woven_opacity_gray, woven_opacity, 100, 255, 0);
 
-  // create normal map for marble walls.
+  // create normal map for marble walls, random deviation in normal.
   normalMap_marble.resize(marble.rows*marble.cols);
   for (int y = 0; y<marble.rows; ++y) {
     for (int x = 0; x<marble.cols; ++x) {
@@ -206,14 +204,6 @@ void Draw(screen* screen)
 {
   vector<Triangle> triangles = originalroom;
   vector<Triangle> boxes = originalbox;
-  //std::vector<glm::ivec2> points;
-  //
-  // for (int i = 0; i < triangles.size(); ++i) {
-  //   triangles[i].v0 = R * triangles[i].v0;
-  //   triangles[i].v1 = R * triangles[i].v1;
-  //   triangles[i].v2 = R * triangles[i].v2;
-  // }
-
 
   // Transform triangles and lightPos to camera space.
   toCameraSpace(triangles);
@@ -282,7 +272,6 @@ void Draw(screen* screen)
      currentColor = clippedTriangles[i].color;
      currentNormal = clippedTriangles[i].normal;
      objectIndex = clippedTriangles[i].index;
-     //currentReflectance = ??;
 
      // Check if texture must be applied
      texture = clippedTriangles[i].texture;
@@ -312,6 +301,7 @@ void Draw(screen* screen)
          screenBuffer[y][x] -= vec3(0.3f, 0.3f, 0.3f);
        }
       }
+      // Put pixel on screen, value comes from screenBuffer.
       PutPixelSDL(screen, x, y, antiAliasing(y,x));
     }
   }
@@ -392,7 +382,7 @@ bool Update()
         /* Move camera up */
         cameraPos += vec4(0, 0.1, 0, 0);
         break;
-        // CAMERA ROTATION
+        /* Rotate scene */
         case SDLK_n:
           yaw -= 0.174533;
           R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
@@ -573,18 +563,20 @@ void PixelShader( Pixel& p, screen* screen ) {
   // Random colour generator
   float LO = 0.2f;
   float HI = 0.5f;
-  float r0 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
-  float r1 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
-  float r2 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
-  vec3 randColour = vec3(r0, r1, r2);
-  vec3 nightVision = vec3(r0-0.2f, 1.0f, r2-0.2f);
+  float r0;
+  float r1;
+  float r2;
+  vec3 randColour;
+  vec3 nightVision;
 
   // Draw on screen if it is closer to the camera, and choose colour.
   if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
     if (p.zinv >= depthBuffer[y][x] && currentColor.x >= 0) {
       switch (randColourSelect) {
         case 0:
+        /* -------------------------No Texture------------------------------- */
         if (texture == 0) {
+          // Perform HDR
           screenBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
           indirectLightPowerPerArea = 0.0f*vec3( 1, 1, 1 );
           lowLightBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
@@ -592,10 +584,11 @@ void PixelShader( Pixel& p, screen* screen ) {
           highLightBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
           indirectLightPowerPerArea = 0.2f*vec3( 1, 1, 1 );
         }
-        // Choose normal colour
+        /* -----------------------------Marble------------------------------- */
         else if (texture == 1) {
+          // Get texture colour value from map
           glm::vec3 textureColour(((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[2]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[1]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[0]/255.0f));
-          // Get value of added noise to normal from map.
+          // Get value of added noise to normal from map, perform HDR.
           screenBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal + normalMap_marble[(p.y*marble.rows) + p.x]);
           indirectLightPowerPerArea = 0.0f*vec3( 1, 1, 1 );
           lowLightBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal + normalMap_marble[(p.y*marble.rows) + p.x]);
@@ -603,16 +596,17 @@ void PixelShader( Pixel& p, screen* screen ) {
           highLightBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal + normalMap_marble[(p.y*marble.rows) + p.x]);
           indirectLightPowerPerArea = 0.2f*vec3( 1, 1, 1 );
         }
+        /* -------------------------Metal Grill------------------------------- */
         else if (texture == 2) {
+          // Get opacity value from map. If zero, set pixel to far away so next nearest pixel is seen through the hole.
           if (metalGrillOpacity.at<uchar>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex)) == 255) {
+            // Get normal map and set currentNormal to normal map value.
             float valx = (float)metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f;
-            // printf("x %u\n", metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[0]);
             float valy = (float)metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f;
-            // printf("y %u\n",metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[1]);
             float valz = (float)metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f;
-            // printf("z %u\n", metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[2]);
             glm::vec3 textureColour(((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f));
             currentNormal = glm::normalize(vec4(valx, valy, valz, 1.0f));
+            // Perform HDR
             screenBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal);
             indirectLightPowerPerArea = 0.0f*vec3( 1, 1, 1 );
             lowLightBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal);
@@ -624,15 +618,20 @@ void PixelShader( Pixel& p, screen* screen ) {
             p.zinv = 0;
           }
         }
+        /* -------------------------Woven Wood------------------------------- */
         else if (texture == 3) {
+          // Get opacity value from map. If zero, set pixel to far away so next nearest pixel is seen through the hole.
           if (woven_opacity.at<uchar>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex)) == 255) {
+            // Get value of occlusion from occlusion map.
             float occlusion = (float)woven_ambientOcclusion.at<uchar>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex));
             occlusion /= 255.0f;
+            // Get normal from normal map.
             float valx = (float)wovenNormal.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f;
             float valy = (float)wovenNormal.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f;
             float valz = (float)wovenNormal.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f;
             currentNormal = glm::normalize(vec4(valx, valy, valz, 1.0f));
             glm::vec3 textureColour(((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f));
+            // Perform HDR
             screenBuffer[y][x] = textureColour * (calculateIllumination(p, currentNormal) * occlusion);
             indirectLightPowerPerArea = 0.0f*vec3( 1, 1, 1 );
             lowLightBuffer[y][x] = textureColour * (calculateIllumination(p, currentNormal) * occlusion);
@@ -647,16 +646,25 @@ void PixelShader( Pixel& p, screen* screen ) {
         break;
         case 1:
         // Choose random colour
+        r0 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+        r1 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+        r2 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+        randColour = vec3(r0, r1, r2);
         screenBuffer[y][x] = randColour * calculateIllumination(p, currentNormal);
         break;
         case 2:
         // Choose nightVision
+        r0 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+        r1 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+        r2 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+        nightVision = vec3(r0-0.2f, 1.0f, r2-0.2f);
         screenBuffer[y][x] = nightVision * calculateIllumination(p, currentNormal);
         break;
       }
       // Set depth buffer value.
       depthBuffer[y][x] = p.zinv;
     }
+    // Add to shadow buffer if shadow triangle is found
     else if (p.zinv > depthBuffer[y][x] && currentColor.x < 0) {
       shadowBuffer[y][x] = 1;
     }
@@ -1726,6 +1734,7 @@ float surroundingShadowSum(int y, int x) {
 
 // Take average values of the surrounding pixels.
 vec3 antiAliasing(int y, int x) {
+  //3 values from the 3 buffers to perform HDR.
   vec3 val = vec3(0.0f, 0.0f, 0.0f);
   vec3 val1 = vec3(0.0f, 0.0f, 0.0f);
   vec3 val2 = vec3(0.0f, 0.0f, 0.0f);
@@ -1743,6 +1752,7 @@ vec3 antiAliasing(int y, int x) {
   return val;
 }
 
+// Find the x coordinates in object space from world space.
 int findU(const Pixel& p, int textureSize, int index) {
   int u = 0;
 
@@ -1779,7 +1789,7 @@ int findU(const Pixel& p, int textureSize, int index) {
 
   return u%textureSize;
 }
-
+// Find the y coordinates in object space from world space.
 int findV(const Pixel& p, int textureSize, int index) {
   int v = 0;
 
