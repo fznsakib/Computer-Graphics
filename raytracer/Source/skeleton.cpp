@@ -383,7 +383,12 @@ vec3 CastRay( const vec4 &position, const vec4 &dir, const int& depth ) {
     }
     // ONLY REFLECTION
     else if(intersection.material[1] > 0.0f && intersection.material[2] == 0.0f) {
+
+      vec4 reflectedDir;
+      GetReflectedDirection(dir, intersection.normal, reflectedDir);
+      glm::normalize(reflectedDir);
       // std::cout << "reflection" << '\n';
+      hitColour += 0.8f * CastRay(intersection.position + (intersection.normal * 0.0001f), reflectedDir, depth + 1);
     }
     // REFLECTION AND REFRACTION
     else if(intersection.material[1] > 0.0f && intersection.material[2] > 0.0f) {
