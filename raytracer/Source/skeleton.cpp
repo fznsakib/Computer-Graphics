@@ -38,11 +38,13 @@ SDL_Event event;
 // - Load sphere
 // - Convert point light to area
 // - Reflection
+// - Refraction
+// - Photon Mapping
 
 // To do
-// - Refraction
-// - Build kd tree
-// - Photon mapping
+// - Photon Mapping with reflection and refraction
+// - Colour bleeding in photon mapping
+// - Build kd tree??
 // - Procedural floors/walls
 
 /* ----------------------------------------------------------------------------*/
@@ -65,9 +67,10 @@ struct Light {
 };
 
 struct Photon {
-  vec4 position;
-  vec4 direction;
+  vec3 position;
+  vec3 direction;
   vec3 power;
+  float distance;
   bool flag;   //flag used in kdtree
 };
 
@@ -91,7 +94,7 @@ vec4 cameraPos( 0.0, 0.0, -3.0, 1.0);
 vector<Light> lights;
 float yaw = 0.0;
 mat4 R(1.0f);
-vec3 black(0.0,0.0,0.0);
+vec3 black(0.0f,0.0f,0.0f);
 vec3 indirectLight = 0.5f * vec3(1, 1, 1);
 
 
@@ -105,10 +108,10 @@ vector<Photon*> globalPhotonPointers;
 KDTree* globalPhotonTree;
 
 int currentMaxDimension;
-int radianceCount = 10;
+int radianceCount = 200;
 int noNode = -1;
-float searchRadius = 0.1f;
-int noOfPhotons = 20000;
+float searchRadius = 0.2f;
+int noOfPhotons = 50000;
 
 KDTree* endTree = (KDTree*)malloc(1 * sizeof(KDTree));
 Photon* endPhoton = (Photon*)malloc(1 * sizeof(Photon));
@@ -139,7 +142,8 @@ int MaxDimension( vector<Photon> photons );
 int GetCurrentMaxDimension();
 float RandomFloat(float min, float max);
 float Mix(const float &a, const float &b, const float &mix);
-void MaxHeapify( vector<Photon*>& maxHeap, const Intersection intersection);
+void MaxHeapSort( vector<Photon*>& maxHeap, const Intersection intersection);
+void Heapify(vector<Photon*>& maxHeap, int heapSize, int i, vec3 position, vec3 normal);
 
 
 int GetCurrentMaxDimension() {
@@ -212,8 +216,6 @@ KDTree* BalanceTree( vector<Photon*> photonPointers ) {
 
   tree->node = photonPointers[medianIndex];
 
-  std::cout << medianIndex << " out of " << photonPointers.size() << '\n';
-
   // Recurse down left and right paths
   if (leftTree.size() != 0) tree->left = BalanceTree(leftTree);
   else tree->node = endPhoton;
@@ -226,77 +228,101 @@ KDTree* BalanceTree( vector<Photon*> photonPointers ) {
 
 }
 
-void MaxHeapify( vector<Photon*>& maxHeap, const Intersection intersection) {
-  int swaps = 0;
+void Heapify(vector<Photon*>& maxHeap, int heapSize, int i, vec3 position, vec3 normal) {
 
-  do {
-    swaps = 0;
-    for (int i = floor(maxHeap.size()/2) - 1; i >= 0 ; i--) {
-      // Find node, leftChild and rightChild's distances to intersection
-      int leftIndex, rightIndex;
+  int largest = i; // Initialize largest as root node
+  int l = 2*i + 1; // left node
+  int r = 2*i + 2; // right node
 
-      if (i == 0) leftIndex = 1;
-      else leftIndex = 2 * i;
+  std::cout << "heapSize: " << heapSize << "or is it? " << maxHeap.size() << '\n';
+  std::cout << "before dist" << '\n';
 
-      if (i == 0) rightIndex = 2;
-      else rightIndex = (2 * i) + 1;
+  float distToNode = glm::distance(normal, (position - maxHeap[largest]->position));;
+  float distToLeft = glm::distance(normal, (position - maxHeap[l]->position));
+  float distToRight = glm::distance(normal, (position - maxHeap[r]->position));
 
-      float distToNode  = glm::distance(intersection.position, maxHeap[i]->position);
-      float distToLeft  = glm::distance(intersection.position, maxHeap[leftIndex]->position);
-      float distToRight = glm::distance(intersection.position, maxHeap[rightIndex]->position);
+  std::cout << "here" << '\n';
 
-      Photon* buffer;
+  // If left child is larger than root
+  if (l < heapSize && distToLeft > distToNode)
+      largest = l;
+
+  // If right child is larger than largest so far
+  if (r < heapSize && distToRight > distToNode)
+      largest = r;
+
+  // If largest is not root
+  if (largest != i)
+  {
+      std::swap(maxHeap[i], maxHeap[largest]);
+
+      // Recursively heapify the affected sub-tree
+      Heapify(maxHeap, heapSize, largest, position, normal);
+  }
+}
+
+void MaxHeapSort( vector<Photon*>& maxHeap, const Intersection intersection) {
+  vec3 position = vec3(intersection.position);
+  vec3 normal = vec3(intersection.normal);
 
 
-      if (distToLeft >= distToRight) {
-        if (distToLeft > distToNode) {
-          buffer = maxHeap[i];
-          maxHeap[i] = maxHeap[leftIndex];
-          maxHeap[leftIndex] = buffer;
-          swaps += 1;
-        }
-      }
-      else if (distToRight > distToLeft) {
-        if (distToRight > distToNode) {
-          buffer = maxHeap[i];
-          maxHeap[i] = maxHeap[rightIndex];
-          maxHeap[rightIndex] = buffer;
-          swaps += 1;
-        }
-      }
-    }
-  } while(swaps > 0);
+  // Build heap (rearrange array)
+  for (int i = maxHeap.size() / 2 - 1; i >= 0; i--) {
+    std::cout << "heapify build called here with heapSize = " << maxHeap.size() << '\n';
+    Heapify(maxHeap, maxHeap.size(), i, position, normal);
+  }
+
+  // One by one extract an element from heap
+  for (int i = maxHeap.size() - 1; i >= 0; i--)
+  {
+      std::cout << "heapify extraction called here with heapSize = " << maxHeap.size() << '\n';
+
+      // Move current root to end
+      swap(maxHeap[0], maxHeap[i]);
+
+      // call max heapify on the reduced heap
+      Heapify(maxHeap, i, 0, position, normal);
+  }
 }
 
 void LocatePhotons( KDTree* tree, vector<Photon*>& maxHeap, Intersection intersection, float& maxSearchDistance ) {
-  // Check if tree has children
   float distance;
+  vec3 normal = vec3(intersection.normal);
+  vec3 position = vec3(intersection.position);
+  float squaredDistance = 0.0f;
+
+  // Check signed distance to plane
   if (tree->node != endPhoton) {
-    distance = glm::dot(intersection.normal, (intersection.position - tree->node->position));
+    distance = glm::dot(normal, (position - tree->node->position));
     // distance = glm::dot(intersection.normal, (intersection.position - tree->node->position));
   }
   else return;
 
+  // Check if tree has children
   if (tree->left != endTree || tree->right != endTree ) {
 
-    // Check signed distance to plane
+    squaredDistance = distance * distance;
 
     // On left of the plane, search left subtree first
-    if (distance < 0 && tree->left != endTree) {
+    if (distance < 0) {
 
-      LocatePhotons(tree->left, maxHeap, intersection, maxSearchDistance);
+      if (tree->left != endTree) {
+        LocatePhotons(tree->left, maxHeap, intersection, maxSearchDistance);
+      }
 
-      if ((distance * distance) < (maxSearchDistance * maxSearchDistance)) {
+      if ((squaredDistance) < (maxSearchDistance)) {
         if (tree->right != endTree) {
           LocatePhotons(tree->right, maxHeap, intersection, maxSearchDistance);
         }
       }
     }
     // On right of the plane, search right subtree first
-    else if (distance > 0 && tree->right != endTree) {
-      LocatePhotons(tree->right, maxHeap, intersection, maxSearchDistance);
+    else {
+      if (tree->right != endTree) {
+        LocatePhotons(tree->right, maxHeap, intersection, maxSearchDistance);
+      }
 
-      if ((distance * distance) < (maxSearchDistance * maxSearchDistance)) {
+      if ((squaredDistance) < (maxSearchDistance)) {
 
         if (tree->left != endTree) {
           LocatePhotons(tree->left, maxHeap, intersection, maxSearchDistance);
@@ -305,24 +331,26 @@ void LocatePhotons( KDTree* tree, vector<Photon*>& maxHeap, Intersection interse
     }
   }
 
-  float squaredDistance = distance * distance;
   // Check if distance to this photon is less than photon furthest away
-  if ( squaredDistance < pow(maxSearchDistance, 2)) {
+  if ( squaredDistance < maxSearchDistance) {
 
-    // If heap already has max no of photons, replace root photon and maxHeapify
+    // Insert this photon to MaxHeap
+    // If heap already has max no of photons, maxHeapify and replace root photon
     if (maxHeap.size() == radianceCount) {
       // Sort MaxHeap to sort photons by distance, root photon being furthest
-      MaxHeapify(maxHeap, intersection);
+      MaxHeapSort(maxHeap, intersection);
 
       maxHeap[0] = tree->node;
-
     }
     // Else continue adding to the heap
     else {
       maxHeap.push_back(tree->node);
+
+      if (maxHeap.size() > 20) MaxHeapSort(maxHeap, intersection);
     }
 
-    maxSearchDistance = glm::distance(intersection.position, maxHeap[0]->position);
+    maxSearchDistance = glm::distance(vec3(intersection.position), maxHeap[0]->position);
+    maxSearchDistance = maxSearchDistance * maxSearchDistance;
   }
 }
 
@@ -334,7 +362,7 @@ int main( int argc, char* argv[] ) {
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.2, -0.7, 1.0 );
-  light.colour = vec3( 14.0f * vec3( 1, 1, 1 ));
+  light.colour = vec3( 50.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
@@ -384,12 +412,9 @@ void Draw(screen* screen) {
       // Apply global photon mapping
       Intersection intersection;
       bool lightCheck = false;
-      vec3 totalRadiance;
+      vec3 totalRadiance = vec3(0.0f, 0.0f, 0.0f);
 
       if (ClosestIntersection(cameraPos, dir, intersection)) {
-        float distance;
-        float radius = 0.2f;
-
         // Check if intersecting with light emitter
         lightCheck = intersection.position.x >  -0.2f  &&
                      intersection.position.x <   0.2f  &&
@@ -398,32 +423,67 @@ void Draw(screen* screen) {
                      intersection.position.z >  -0.8f  &&
                      intersection.position.z <  -0.4f;
 
+        noOfPhotons = 400000;
+        radianceCount = 100;
+        searchRadius = 0.4f;
 
-        // Locate photons
+
         // for (int i = 0; i < globalPhotonMap.size(); i++) {
-        //   distance = glm::distance(intersection.position, globalPhotonMap[i].position);
-        //
-        //   if (distance < searchRadius) totalRadiance += globalPhotonMap[i].power;
+        //   float distance = glm::distance(vec3(intersection.position), globalPhotonMap[i].position);
+        //   if (distance < searchRadius) {
+        //     totalRadiance += globalPhotonMap[i].power;
+        //   }
         // }
 
-        vector<Photon*> nearestPhotons;
-        nearestPhotons.reserve(radianceCount);
+        // Locate nearest photons
+        vector<Photon> nearestPhotons;
+        for (int i = 0; i < globalPhotonMap.size(); i++) {
+          float distance = glm::distance(vec3(intersection.position), globalPhotonMap[i].position);
+          if (distance < searchRadius) {
+            globalPhotonMap[i].distance = distance;
+            nearestPhotons.push_back(globalPhotonMap[i]);
+          }
+        }
 
-        // std::cout << "before locating" << '\n';
-        LocatePhotons( globalPhotonTree, nearestPhotons, intersection, searchRadius );
-        // std::cout << "after locating" << '\n';
-
+        // // Sort photons by distance, take closest n photons
+        sort(nearestPhotons.begin(), nearestPhotons.end(), [](const Photon lhs, const Photon rhs) {
+          return lhs.distance < rhs.distance;
+        });
 
         // std::cout << nearestPhotons.size() << '\n';
 
-        // Calculate radiance estimate
-        for (int i = 0; i < nearestPhotons.size(); i++ ) {
-          float distance = glm::dot(intersection.normal, (intersection.position - nearestPhotons[i]->position));
-          std::cout << "distance of photon no " << i << ": " << distance << '\n';
-          totalRadiance += nearestPhotons[i]->power;
+        // Add power from closest photons
+        if (nearestPhotons.size() == 0) {
+          // totalRadiance = vec3(1.0f, 1.0f, 1.0f);
+        }
+        else if (nearestPhotons.size() > radianceCount || nearestPhotons.size() == radianceCount) {
+          for (int i = 0; i < radianceCount; i++){
+            totalRadiance += nearestPhotons[i].power;
+          }
+          // totalRadiance = totalRadiance / float((M_PI * (searchRadius * searchRadius)));
+          // totalRadiance = totalRadiance / float((M_PI * (radianceCount)));
+        }
+        else {
+          for (int i = 0; i < nearestPhotons.size(); i++) {
+            totalRadiance += nearestPhotons[i].power;
+          }
+          // totalRadiance = totalRadiance / float((M_PI * (searchRadius * searchRadius)));
+          // totalRadiance = totalRadiance / float((M_PI * (radianceCount)));
         }
 
-        totalRadiance = totalRadiance / float((M_PI * (searchRadius * searchRadius)));
+        // vector<Photon*> nearestPhotons;
+        // nearestPhotons.reserve(radianceCount);
+        //
+        // LocatePhotons( globalPhotonTree, nearestPhotons, intersection, searchRadius );
+
+        // Calculate radiance estimate
+        // for (int i = 0; i < nearestPhotons.size(); i++ ) {
+          // float distance = glm::dot(intersection.normal, (intersection.position - nearestPhotons[i]->position));
+          // std::cout << "distance of photon no " << i << ": " << distance << '\n';
+        //   totalRadiance += nearestPhotons[i]->power;
+        // }
+
+
       }
       if (lightCheck) {
         PutPixelSDL(screen, u, v, vec3(1.0f, 1.0f, 1.0f));
@@ -790,10 +850,10 @@ void PhotonEmission( const int noOfPhotons ) {
     } while ((x*x) + (y*y) + (z*z) > 1);
 
     // Change to square light later
-    photon.position = vec4(RandomFloat(-0.2f, 0.2f), -0.95f, RandomFloat(-0.8f, -0.4f), 1.0f);
+    photon.position = vec3(RandomFloat(-0.2f, 0.2f), -0.95f, RandomFloat(-0.8f, -0.4f));
     float u = RandomFloat(0.0f, 1.0f);
     float v = 2 * M_PI * RandomFloat(0.0f, 1.0f);
-    photon.direction = vec4((cos(v) * sqrt(u)), sqrt(1- u), (sin(v) * sqrt(u)), 1.0f);
+    photon.direction = vec3((cos(v) * sqrt(u)), sqrt(1- u), (sin(v) * sqrt(u)));
 
     // photon.position = vec4(lights[0].position.x, lights[0].position.y, lights[0].position.z, 1.0f);
     // photon.direction = vec4(x, y, z, 1.0);
@@ -812,10 +872,11 @@ void TracePhoton(Photon &photon) {
   bool photonAbsorbed = false;
   Intersection intersection;
 
+
   while (photonAbsorbed == false) {
     // Call ClosestIntersection to find next object to intersect with
 
-    if (!ClosestIntersection(photon.position, photon.direction, intersection)) {
+    if (!ClosestIntersection(vec4(photon.position, 1.0), vec4(photon.direction, 1.0), intersection)) {
       break;
     }
 
@@ -826,7 +887,7 @@ void TracePhoton(Photon &photon) {
     // DIFFUSE REFLECTION
     if (random < intersection.material[0]) {
       // Reflect photon with new position in new direction
-      photon.position = intersection.position;
+      photon.position = vec3(intersection.position);
       photon.power = photon.power * intersection.colour;
 
       globalPhotonMap.push_back(photon);
@@ -835,23 +896,25 @@ void TracePhoton(Photon &photon) {
       vec4 randomDirection = GenerateRandomDirection();
       Intersection intersectionTest;
 
-      while (!ClosestIntersection(photon.position, randomDirection, intersectionTest)) {
+      while (!ClosestIntersection(vec4(photon.position, 1.0f), randomDirection, intersectionTest)) {
         randomDirection = GenerateRandomDirection();
       }
 
-      photon.direction = randomDirection;
+      photon.direction = vec3(randomDirection);
     }
     // SPECULAR REFLECTION
     else if (random < (intersection.material[0] + intersection.material[1])) {
       // Reflect photon with new position in new direction
-      photon.position = intersection.position;
-      GetReflectedDirection(photon.direction, intersection.normal, photon.direction);
+      photon.position = vec3(intersection.position);
+      vec4 reflectedDir;
+      vec4 incident = vec4(photon.direction.x, photon.direction.y, photon.direction.z, 1.0f);
+      GetReflectedDirection(incident, intersection.normal, reflectedDir);
 
       // Don't store photon as this will be done by the raytracer
     }
     // ABSORPTION
     else {
-      photon.position = intersection.position;
+      photon.position = vec3(intersection.position);
       photonAbsorbed = true;
 
       globalPhotonMap.push_back(photon);
