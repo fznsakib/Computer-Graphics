@@ -18,8 +18,8 @@ using glm::mat4;
 
 SDL_Event event;
 
-#define SCREEN_WIDTH 640
-#define SCREEN_HEIGHT 512
+#define SCREEN_WIDTH 900
+#define SCREEN_HEIGHT 720
 #define FULLSCREEN_MODE false
 
 
@@ -47,7 +47,7 @@ vec3 highLightBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 // Initialise light variables
 vec4 lightPos;
 vec4 sceneCoordinatesLightPos(0, -0.5, 0, 1);
-vec3 lightPower = 15.0f*vec3( 1, 1, 1 );
+vec3 lightPower = 20.0f*vec3( 1, 1, 1 );
 vec3 indirectLightPowerPerArea = 0.15f*vec3( 1, 1, 1 );
 
 // Store values to run check against normals
@@ -325,7 +325,7 @@ bool Update()
   int t2 = SDL_GetTicks();
   float dt = float(t2-t);
   t = t2;
-  printf("%f\n", dt);
+  // printf("%f\n", dt);
 
   SDL_Event e;
   while(SDL_PollEvent(&e))

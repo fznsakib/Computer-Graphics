@@ -6,8 +6,8 @@
 #include <glm/glm.hpp>
 #include <vector>
 
-int setting = 1;
-int settingBoxes = 0;
+int setting = 2;
+int settingBoxes = 1;
 
 // Used to describe a triangular surface:
 class Triangle
