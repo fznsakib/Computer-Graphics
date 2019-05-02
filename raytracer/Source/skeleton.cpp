@@ -110,8 +110,8 @@ KDTree* globalPhotonTree;
 int currentMaxDimension;
 int radianceCount = 200;
 int noNode = -1;
-float searchRadius = 0.2f;
-int noOfPhotons = 50000;
+float searchRadius = 0.1f;
+int noOfPhotons = 100000;
 
 KDTree* endTree = (KDTree*)malloc(1 * sizeof(KDTree));
 Photon* endPhoton = (Photon*)malloc(1 * sizeof(Photon));
@@ -362,7 +362,7 @@ int main( int argc, char* argv[] ) {
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.2, -0.7, 1.0 );
-  light.colour = vec3( 50.0f * vec3( 1, 1, 1 ));
+  light.colour = vec3( 500.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
@@ -399,7 +399,7 @@ void Draw(screen* screen) {
 
   /* Clear buffer */
   memset(screen->buffer, 0, screen->height*screen->width*sizeof(uint32_t));
-
+  int called1 =0, called2 = 0;
 
   // u and v are coordinates on the 2D screen
   for (int v = 0; v < SCREEN_HEIGHT; v++) {
@@ -423,17 +423,7 @@ void Draw(screen* screen) {
                      intersection.position.z >  -0.8f  &&
                      intersection.position.z <  -0.4f;
 
-        noOfPhotons = 400000;
-        radianceCount = 100;
-        searchRadius = 0.4f;
 
-
-        // for (int i = 0; i < globalPhotonMap.size(); i++) {
-        //   float distance = glm::distance(vec3(intersection.position), globalPhotonMap[i].position);
-        //   if (distance < searchRadius) {
-        //     totalRadiance += globalPhotonMap[i].power;
-        //   }
-        // }
 
         // Locate nearest photons
         vector<Photon> nearestPhotons;
@@ -445,6 +435,8 @@ void Draw(screen* screen) {
           }
         }
 
+        std::cout << nearestPhotons.size() << '\n';
+
         // // Sort photons by distance, take closest n photons
         sort(nearestPhotons.begin(), nearestPhotons.end(), [](const Photon lhs, const Photon rhs) {
           return lhs.distance < rhs.distance;
@@ -454,12 +446,13 @@ void Draw(screen* screen) {
 
         // Add power from closest photons
         if (nearestPhotons.size() == 0) {
-          // totalRadiance = vec3(1.0f, 1.0f, 1.0f);
+          totalRadiance = vec3(0.0f, 0.0f, 0.0f);
         }
         else if (nearestPhotons.size() > radianceCount || nearestPhotons.size() == radianceCount) {
           for (int i = 0; i < radianceCount; i++){
             totalRadiance += nearestPhotons[i].power;
           }
+          called1+=1;
           // totalRadiance = totalRadiance / float((M_PI * (searchRadius * searchRadius)));
           // totalRadiance = totalRadiance / float((M_PI * (radianceCount)));
         }
@@ -467,13 +460,14 @@ void Draw(screen* screen) {
           for (int i = 0; i < nearestPhotons.size(); i++) {
             totalRadiance += nearestPhotons[i].power;
           }
+          called2+=1;
           // totalRadiance = totalRadiance / float((M_PI * (searchRadius * searchRadius)));
           // totalRadiance = totalRadiance / float((M_PI * (radianceCount)));
         }
 
         // vector<Photon*> nearestPhotons;
         // nearestPhotons.reserve(radianceCount);
-        //
+
         // LocatePhotons( globalPhotonTree, nearestPhotons, intersection, searchRadius );
 
         // Calculate radiance estimate
@@ -490,7 +484,11 @@ void Draw(screen* screen) {
       }
       else PutPixelSDL(screen, u, v, totalRadiance);
     }
+
   }
+  std::cout << "called 1 = " << called1 << '\n';
+  std::cout << "called 2 = " << called2 << '\n';
+
 }
 
 
