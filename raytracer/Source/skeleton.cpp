@@ -129,7 +129,7 @@ void LocatePhotons( Photon* rootNode, vector<Photon*> maxHeap, Intersection inte
 int MaxDimension( vector<Photon> photons );
 int GetCurrentMaxDimension();
 float RandomFloat(float min, float max);
-float mix(const float &a, const float &b, const float &mix);
+float Mix(const float &a, const float &b, const float &mix);
 void MaxHeapify( vector<Photon*>& maxHeap, const Intersection intersection);
 
 
@@ -176,8 +176,8 @@ KDTree* BalanceTree( vector<Photon*> photonPointers ) {
     return lhs->position[GetCurrentMaxDimension()] < rhs->position[GetCurrentMaxDimension()];
   });
 
-  // KDTree* tree = malloc(1 * sizeof(KDTree));
-  KDTree tree;
+  KDTree* tree = (KDTree*)malloc(1 * sizeof(KDTree));
+  // KDTree tree;
 
   // Find median photon, leftTree and rightTree
   int medianIndex = floor(photonPointers.size() / 2);
@@ -191,18 +191,18 @@ KDTree* BalanceTree( vector<Photon*> photonPointers ) {
 
   // If one more photon left to balance then assign node to it and return
   if (photonPointers.size() == 1) {
-    tree.node = photonPointers[0];
+    tree->node = photonPointers[0];
     // return &tree;
   }
 
-  tree.node = photonPointers[medianIndex];
+  tree->node = photonPointers[medianIndex];
 
   // Recurse down left and right paths
-  if (leftTree.size() != 0) tree.left = BalanceTree(leftTree);
-  if (rightTree.size() != 0) tree.right = BalanceTree(rightTree);
+  if (leftTree.size() != 0) tree->left = BalanceTree(leftTree);
+  if (rightTree.size() != 0) tree->right = BalanceTree(rightTree);
 
   // Return balance kd tree
-  return &tree;
+  return tree;
 
 }
 
@@ -333,11 +333,13 @@ int main( int argc, char* argv[] ) {
 
   // Create and balance photon kd tree
   // globalPhotonTree = (KDTree*)malloc(sizeof(KDTree));
-  //
-  // globalPhotonTree = BalanceTree(globalPhotonPointers);
 
-  // std::cout << globalPhotonTree << '\n';
-  // std::cout << globalPhotonTree->node << '\n';
+  globalPhotonTree = BalanceTree(globalPhotonPointers);
+
+  std::cout << globalPhotonTree << '\n';
+  std::cout << globalPhotonTree->node->position.x << '\n';
+  std::cout << globalPhotonTree->node->position.z << '\n';
+
   // std::cout << globalPhotonTree->node->position.x << '\n';
   // std::cout << globalPhotonTree->left->node->position.x << '\n';
 
@@ -363,6 +365,9 @@ void Draw(screen* screen) {
   // std::cout << globalPhotonTree->left->node->position.x << '\n';
   // std::cout << (*globalPhotonTree.left->node).direction.x << '\n';
   // std::cout << "after" << '\n';
+
+  std::cout << globalPhotonTree->node->position.x << '\n';
+  std::cout << globalPhotonTree->node->position.z << '\n';
 
 
   /* Clear buffer */
@@ -429,7 +434,6 @@ void Draw(screen* screen) {
 
       // OLD RENDERING METHOD
       vec3 pixelColour = vec3(0.0f, 0.0f, 0.0f);
-      vec3 indirectLight = 0.5f * vec3(1, 1, 1);
       bool validRay = false;
 
       // Trace multiple rays around each ray and average color for anti aliasing
@@ -939,6 +943,6 @@ float RandomFloat(float min, float max) {
 }
 
 
-float mix(const float &a, const float &b, const float &mix) {
+float Mix(const float &a, const float &b, const float &mix) {
     return b * mix + a * (1 - mix);
 }
