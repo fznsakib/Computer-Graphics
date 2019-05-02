@@ -15,7 +15,8 @@ public:
 	glm::vec4 v2;
 	glm::vec4 normal;
 	glm::vec3 color;
-	bool mirror = false;
+	// Set textures with this value. 1 = marble, 2 = metal grill, 3 = woven
+	int texture = 0;
 
 	Triangle( glm::vec4 v0, glm::vec4 v1, glm::vec4 v2, glm::vec3 color )
 		: v0(v0), v1(v1), v2(v2), color(color)
@@ -52,7 +53,6 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 	vec3 blue(   0.15f, 0.15f, 0.75f );
 	vec3 purple( 0.75f, 0.15f, 0.75f );
 	vec3 white(  0.75f, 0.75f, 0.75f );
-	vec3 wood( 10.0f, 10.0f, 10.0f);
 
 	room.clear();
 	boxes.clear();
@@ -76,32 +76,44 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 	vec4 H(0,L,L,1);
 
 	// Floor:
-	room.push_back( Triangle( C, B, A, green ) );
-	room.push_back( Triangle( C, D, B, green ) );
+	Triangle floor1( C, B, A, green );
+	floor1.texture = 1;
+	room.push_back( floor1 );
+	Triangle floor2( C, D, B, green );
+	floor2.texture = 1;
+	room.push_back( floor2 );
 
 	// Left wall
 	Triangle leftwall1 ( A, E, C, purple );
-	leftwall1.mirror = true;
+	leftwall1.texture = 2;
 	room.push_back( leftwall1 );
 	Triangle leftwall2 ( C, E, G, purple );
-	leftwall2.mirror = true;
+	leftwall2.texture = 2;
 	room.push_back( leftwall2 );
 
 	// Right wall
-	room.push_back( Triangle( F, B, D, yellow ) );
-	room.push_back( Triangle( H, F, D, yellow ) );
+	Triangle rightwall1( F, B, D, yellow );
+	rightwall1.texture = 1;
+	room.push_back( rightwall1  );
+	Triangle rightwall2( H, F, D, yellow );
+	rightwall2.texture = 1;
+	room.push_back( rightwall2 );
 
 	// Ceiling
 	Triangle ceiling1 ( E, F, G, cyan );
-	ceiling1.mirror = true;
+	ceiling1.texture = 1;
 	room.push_back( ceiling1 );
 	Triangle ceiling2( F, H, G, cyan );
-	ceiling2.mirror = true;
+	ceiling2.texture = 1;
 	room.push_back( ceiling2 );
 
 	// Back wall
-	room.push_back( Triangle( G, D, C, white ) );
-	room.push_back( Triangle( G, H, D, white ) );
+	Triangle backwall1( G, D, C, vec3(0.03529f, 0.7843f, 0.8078f) );
+	backwall1.texture = 0;
+	room.push_back( backwall1 );
+	Triangle backwall2( G, H, D, vec3(0.03529f, 0.7843f, 0.8078f) );
+	backwall2.texture = 0;
+	room.push_back( backwall2 );
 
 	// ---------------------------------------------------------------------------
 	// Short block
@@ -117,24 +129,44 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 	H = vec4( 82,165,225,1);
 
 	// Front
-	boxes.push_back( Triangle(E,B,A,red) );
-	boxes.push_back( Triangle(E,F,B,red) );
+	Triangle a(E,B,A,red);
+	a.texture = 3;
+	boxes.push_back( a );
+	Triangle s(E,F,B,red);
+	s.texture = 3;
+	boxes.push_back( s );
 
 	// Front
-	boxes.push_back( Triangle(F,D,B,red) );
-	boxes.push_back( Triangle(F,H,D,red) );
+	Triangle d(F,D,B,red);
+	d.texture = 3;
+	boxes.push_back( d );
+	Triangle f(F,H,D,red);
+	f.texture = 3;
+	boxes.push_back( f );
 
 	// BACK
-	boxes.push_back( Triangle(H,C,D,red) );
-	boxes.push_back( Triangle(H,G,C,red) );
+	Triangle g(H,C,D,red);
+	g.texture = 3;
+	boxes.push_back( g );
+	Triangle h(H,G,C,red);
+	h.texture = 3;
+	boxes.push_back( h );
 
 	// LEFT
-	boxes.push_back( Triangle(G,E,C,red) );
-	boxes.push_back( Triangle(E,A,C,red) );
+	Triangle j(G,E,C,red);
+	j.texture = 3;
+	boxes.push_back( j );
+	Triangle k(E,A,C,red);
+	k.texture = 3;
+	boxes.push_back( k );
 
 	// TOP
-	boxes.push_back( Triangle(G,F,E,red) );
-	boxes.push_back( Triangle(G,H,F,red) );
+	Triangle l(G,F,E,red);
+	l.texture = 3;
+	boxes.push_back( l );
+	Triangle q(G,H,F,red);
+	q.texture = 3;
+	boxes.push_back( q );
 
 	// ---------------------------------------------------------------------------
 	// Tall block
@@ -150,24 +182,44 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 	H = vec4(314,330,456,1);
 
 	// Front
-	boxes.push_back( Triangle(E,B,A,blue) );
-	boxes.push_back( Triangle(E,F,B,blue) );
+	Triangle front_tallBlock1(E,B,A,blue);
+	front_tallBlock1.texture = 0;
+	boxes.push_back( front_tallBlock1 );
+	Triangle front_tallBlock2(E,F,B,blue);
+	front_tallBlock2.texture = 0;
+	boxes.push_back( front_tallBlock2 );
 
 	// Front
-	boxes.push_back( Triangle(F,D,B,blue) );
-	boxes.push_back( Triangle(F,H,D,blue) );
+	Triangle bottom_tallBlock1(F,D,B,blue);
+	bottom_tallBlock1.texture = 0;
+	boxes.push_back( bottom_tallBlock1 );
+	Triangle bottom_tallBlock2(F,H,D,blue);
+	bottom_tallBlock2.texture = 0;
+	boxes.push_back( bottom_tallBlock2 );
 
 	// BACK
-	boxes.push_back( Triangle(H,C,D,blue) );
-	boxes.push_back( Triangle(H,G,C,blue) );
+	Triangle back_tallBlock1(H,C,D,blue);
+	back_tallBlock1.texture = 0;
+	boxes.push_back( back_tallBlock1 );
+	Triangle back_tallBlock2(H,G,C,blue);
+	back_tallBlock2.texture = 0;
+	boxes.push_back( back_tallBlock2 );
 
 	// LEFT
-	boxes.push_back( Triangle(G,E,C,blue) );
-	boxes.push_back( Triangle(E,A,C,blue) );
+	Triangle left_tallBlock1(G,E,C,blue);
+	left_tallBlock1.texture = 0;
+	boxes.push_back( left_tallBlock1 );
+	Triangle left_tallBlock2(E,A,C,blue);
+	left_tallBlock2.texture = 0;
+	boxes.push_back( left_tallBlock2 );
 
 	// TOP
-	boxes.push_back( Triangle(G,F,E,blue) );
-	boxes.push_back( Triangle(G,H,F,blue) );
+	Triangle top_tallBlock1(G,F,E,blue);
+	top_tallBlock1.texture = 0;
+	boxes.push_back( top_tallBlock1 );
+	Triangle top_tallBlock2(G,H,F,blue);
+	top_tallBlock2.texture = 0;
+	boxes.push_back( top_tallBlock2 );
 
 
 	// ----------------------------------------------

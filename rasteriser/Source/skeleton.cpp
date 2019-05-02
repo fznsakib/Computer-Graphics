@@ -29,31 +29,51 @@ SDL_Event event;
 
 float focalLength = 512;
 vec4 cameraPos( 0, 0, -3.001, 1 );
-// float yaw = 0.0;
-// mat4 R(1.0f);
+
+// Handle rotation of camera.
+float yaw = 0.0;
+mat4 R(1.0f);
+
 vec3 currentColor;
 // Stores depth information of screen pixels. This is stored as 1/z.
 float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 vec3 screenBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 int shadowBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
-vec3 mirrorBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 
 
 // Initialise light variables
-vec4 lightPos(0, -0.5, 0, 1);
+vec4 lightPos;
+vec4 sceneCoordinatesLightPos(0, -0.5, 0, 1);
 vec3 lightPower = 11.0f*vec3( 1, 1, 1 );
 vec3 indirectLightPowerPerArea = 0.08f*vec3( 1, 1, 1 );
+
+// Store values to run check against normals
+vec3 upVec(0.0f, 1.0f, 0.0f);
+vec3 leftVec(1.0f, 0.0f, 0.0f);
+vec3 rightVec(-1.0f, 0.0f, 0.0f);
+vec3 downVec(0.0f, -1.0f, 0.0f);
 
 // Normal and reflectance values to be passed to PixelShader
 vec4 currentNormal;
 vec3 currentReflectance;
+int objectHeight;
+int objectWidth;
 
-// Store texture here
-cv:: Mat texture;
+// Store texture and normal map here
+cv:: Mat marble;
+cv:: Mat woven;
+cv:: Mat woven_ambientOcclusion;
+cv:: Mat woven_ambientOcclusion_gray;
+cv:: Mat woven_opacity;
+cv:: Mat woven_opacity_gray;
+cv:: Mat metalGrill;
+cv:: Mat metalGrillOpacity;
+cv:: Mat metalGrillOpacity_gray;
+cv:: Mat metalGrillNormalMap;
+vector<vec4> normalMap_marble;
 
-// Tells if current triangle is a mirror, and save the colour of the reflection.
-bool isMirror;
-vec3 reflection;
+// Tells if current triangle has texture in order to map.
+int texture;
 
 // Choose random colour or correct colour
 int randColourSelect = 0;
@@ -91,19 +111,18 @@ void DrawLineSDL( screen* screen, vector<glm::ivec2> line, vec3 color );
 void DrawPolygon( screen* screen, const vector<Vertex>& vertices);
 void ComputePolygonRows( const vector<Pixel>& vertexPixels, vector<Pixel>& leftPixels, vector<Pixel>& rightPixels);
 void DrawPolygonRows( screen* screen, const vector<Pixel>& leftPixels, const vector<Pixel>& rightPixels );
-void PixelShader( const Pixel& p, screen* screen );
+void PixelShader( Pixel& p, screen* screen );
 vec3 calculateIllumination( const Pixel& p, vec4 currentNormal );
 void toClipSpace( vector<Triangle>& v );
 vector<Triangle> clipZ( vector<Triangle> triangles );
 vector<Triangle> clip( vector<Triangle>& triangles, int plane );
 vector<Triangle> createShadowVolume( vector<Triangle>& triangles );
 void toCameraSpace( vector<Triangle>& triangles );
+void toCameraSpace( vec4& vector );
 float surroundingShadowSum( int x, int y );
 vec3 antiAliasing( int y, int x );
-vec3 findReflection( const Pixel& p );
-int closestIntersection( vec4 reflectedRay );
-int findU(const Pixel& p);
-int findV(const Pixel& p);
+int findU(const Pixel& p, int textureSize);
+int findV(const Pixel& p, int textureSize );
 
 int main( int argc, char* argv[] )
 {
@@ -111,11 +130,38 @@ int main( int argc, char* argv[] )
   screen *screen = InitializeSDL( SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_MODE );
   // Load objects here and copy values to vector in update.
   LoadTestModel( originalroom, originalbox );
-  // load image.
-  texture = cv::imread("Textures/Marble2000x2000.jpg", CV_LOAD_IMAGE_UNCHANGED);
-  cv::imshow("window", texture);
-  cv::waitKey(0);
-  printf("%d, %d\n", texture.rows, texture.cols );
+  // load textures.
+  // MARBLE
+  marble = cv::imread("Textures/Marble2000x2000.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  // WOVEN
+  woven = cv::imread("Textures/woven1024x1024.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  woven_ambientOcclusion = cv::imread("Textures/Wood_wicker_003_ambientOcclusion.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  woven_opacity = cv::imread("Textures/Wood_wicker_003_opacity.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  // METAL GRILL
+  metalGrill = cv::imread("Textures/Metal_Grill_002_basecolor.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  metalGrillOpacity = cv::imread("Textures/Metal_Grill_002_opacity.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  metalGrillNormalMap = cv::imread("Textures/Metal_Grill_002_normal.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  /// Convert the image to Gray
+  cv::cvtColor( metalGrillOpacity, metalGrillOpacity_gray, CV_BGR2GRAY );
+  cv::cvtColor( woven_ambientOcclusion, woven_ambientOcclusion_gray, CV_BGR2GRAY );
+  cv::cvtColor( woven_opacity, woven_opacity_gray, CV_BGR2GRAY);
+  // Threshold
+  cv::threshold( metalGrillOpacity_gray, metalGrillOpacity, 100, 255, 0 );
+  cv::threshold( woven_opacity_gray, woven_opacity, 100, 255, 0);
+
+  // create normal map for marble walls.
+  normalMap_marble.resize(marble.rows*marble.cols);
+  for (int y = 0; y<marble.rows; ++y) {
+    for (int x = 0; x<marble.cols; ++x) {
+      float LO = -0.000002f;
+      float HI = 0.000002f;
+      float v0 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+      float v1 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+      float v2 = LO + static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/HI-LO));
+      vec4 normalNoise = vec4(v0,v1,v2,0.0f);
+      normalMap_marble[(y*marble.rows) + x] = normalNoise;
+    }
+  }
 
   while ( Update())
     {
@@ -154,10 +200,19 @@ void Draw(screen* screen)
   vector<Triangle> triangles = originalroom;
   vector<Triangle> boxes = originalbox;
   //std::vector<glm::ivec2> points;
+  //
+  // for (int i = 0; i < triangles.size(); ++i) {
+  //   triangles[i].v0 = R * triangles[i].v0;
+  //   triangles[i].v1 = R * triangles[i].v1;
+  //   triangles[i].v2 = R * triangles[i].v2;
+  // }
 
-  // Transform triangles to camera space.
+
+  // Transform triangles and lightPos to camera space.
   toCameraSpace(triangles);
   toCameraSpace(boxes);
+  lightPos = sceneCoordinatesLightPos;
+  toCameraSpace(lightPos);
 
   // Take all subjects in the room and add shadows.
    boxes = createShadowVolume(boxes);
@@ -165,6 +220,14 @@ void Draw(screen* screen)
    // Add the shadowed boxes triangles to the main triangles vector.
    for (int i = 0; i < boxes.size(); ++i) {
      triangles.push_back(boxes[i]);
+   }
+
+   // Rotate scene
+   lightPos = R * lightPos;
+   for (int i = 0; i < triangles.size(); ++i) {
+     triangles[i].v0 = R * triangles[i].v0;
+     triangles[i].v1 = R * triangles[i].v1;
+     triangles[i].v2 = R * triangles[i].v2;
    }
 
   // Transform triangles to clip space
@@ -192,9 +255,6 @@ void Draw(screen* screen)
   // Clear shadow buffer.
   memset(shadowBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(int));
 
-  // Clear mirror buffer.
-  memset(mirrorBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(glm::vec3));
-
   // Go through all clipped triangles
   for( uint32_t i=0; i<clippedTriangles.size(); ++i ) {
 
@@ -210,8 +270,8 @@ void Draw(screen* screen)
      currentNormal = clippedTriangles[i].normal;
      //currentReflectance = ??;
 
-     // if is mirror, calculate the closest intersection and save the colour.
-     isMirror = clippedTriangles[i].mirror;
+     // Check if texture must be applied
+     texture = clippedTriangles[i].texture;
 
      // Draw and colour the triangles.
      DrawPolygon( screen, vertices );
@@ -239,9 +299,6 @@ void Draw(screen* screen)
        }
       }
       PutPixelSDL(screen, x, y, antiAliasing(y,x));
-      if (mirrorBuffer[y][x].x > 0) {
-        // PutPixelSDL(screen, x, y, mirrorBuffer[y][x]);
-      }
     }
   }
 }
@@ -271,22 +328,22 @@ bool Update()
       {
         // LIGHT MOVEMENT
         case SDLK_w:
-          lightPos += vec4(0, 0, 0.1, 0);
+          sceneCoordinatesLightPos += vec4(0, 0, 0.1, 0);
         break;
         case SDLK_s:
-          lightPos += vec4(0, 0, -0.1, 0);
+          sceneCoordinatesLightPos += vec4(0, 0, -0.1, 0);
         break;
         case SDLK_a:
-          lightPos += vec4(-0.1, 0, 0, 0);
+          sceneCoordinatesLightPos += vec4(-0.1, 0, 0, 0);
         break;
         case SDLK_d:
-          lightPos += vec4(0.1, 0, 0, 0);
+          sceneCoordinatesLightPos += vec4(0.1, 0, 0, 0);
         break;
         case SDLK_q:
-          lightPos += vec4(0, -0.1, 0, 0);
+          sceneCoordinatesLightPos += vec4(0, -0.1, 0, 0);
         break;
         case SDLK_e:
-          lightPos += vec4(0, 0.1, 0, 0);
+          sceneCoordinatesLightPos += vec4(0, 0.1, 0, 0);
         break;
         /* Reduce surrounding brightness */
         case SDLK_1:
@@ -320,6 +377,19 @@ bool Update()
         case SDLK_x:
         /* Move camera up */
         cameraPos += vec4(0, 0.1, 0, 0);
+        break;
+        // CAMERA ROTATION
+        case SDLK_n:
+          yaw -= 0.174533;
+          R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
+          R[1][0] = 0;          R[1][1] = 1;   R[1][2] = 0;
+          R[2][0] = sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
+        break;
+        case SDLK_m:
+          yaw += 0.174533;
+          R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
+          R[1][0] = 0;          R[1][1] = 1;   R[1][2] = 0;
+          R[2][0] = sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
         break;
         case SDLK_f:
         /* Increase focal length */
@@ -482,7 +552,7 @@ void DrawLineSDL( screen* screen, vector<glm::ivec2> line, vec3 color ) {
     }
 }
 
-void PixelShader( const Pixel& p, screen* screen ) {
+void PixelShader( Pixel& p, screen* screen ) {
   int x = p.x;
   int y = p.y;
 
@@ -498,14 +568,40 @@ void PixelShader( const Pixel& p, screen* screen ) {
   // Draw on screen if it is closer to the camera, and choose colour.
   if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
     if (p.zinv >= depthBuffer[y][x] && currentColor.x >= 0) {
-      depthBuffer[y][x] = p.zinv;
       switch (randColourSelect) {
         case 0:
+        if (texture == 0) {
+          screenBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
+        }
         // Choose normal colour
-        screenBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
-        if (isMirror) {
-          glm::vec3 wood(((float)texture.at<cv::Vec3b>(findU(p), findV(p))[2]/255.0f), ((float)texture.at<cv::Vec3b>(findU(p), findV(p))[1]/255.0f), ((float)texture.at<cv::Vec3b>(findU(p), findV(p))[0]/255.0f));
-          screenBuffer[y][x] = wood * calculateIllumination(p, currentNormal);
+        else if (texture == 1) {
+          glm::vec3 textureColour(((float)marble.at<cv::Vec3b>(findU(p, 2000), findV(p, 2000))[2]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000), findV(p, 2000))[1]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000), findV(p, 2000))[0]/255.0f));
+          // Get value of added noise to normal from map.
+          screenBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal + normalMap_marble[(p.y*marble.rows) + p.x]);
+        }
+        else if (texture == 2) {
+          if (metalGrillOpacity.at<uchar>(findU(p, 1024), findV(p, 1024)) == 255) {
+            currentNormal.x += metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[0]/255;
+            currentNormal.y += metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[1]/255;
+            currentNormal.z += metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[2]/255;
+            currentNormal = glm::normalize(currentNormal);
+            glm::vec3 textureColour(((float)metalGrill.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[2]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[1]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[0]/255.0f));
+            screenBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal);
+          }
+          else {
+            p.zinv = 0;
+          }
+        }
+        else if (texture == 3) {
+          if (woven_opacity.at<uchar>(findU(p, 1024), findV(p, 1024)) == 255) {
+            float occlusion = (float)woven_ambientOcclusion.at<uchar>(findU(p, 1024), findV(p, 1024));
+            occlusion /= 510.0f;
+            glm::vec3 textureColour(((float)woven.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[2]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[1]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[0]/255.0f));
+            screenBuffer[y][x] = textureColour * (calculateIllumination(p, currentNormal) * occlusion);
+          }
+          else {
+            p.zinv = 0;
+          }
         }
         break;
         case 1:
@@ -517,18 +613,17 @@ void PixelShader( const Pixel& p, screen* screen ) {
         screenBuffer[y][x] = nightVision * calculateIllumination(p, currentNormal);
         break;
       }
+      // Set depth buffer value.
+      depthBuffer[y][x] = p.zinv;
     }
     else if (p.zinv > depthBuffer[y][x] && currentColor.x < 0) {
       shadowBuffer[y][x] = 1;
-    }
-    if (isMirror) {
-      //mirrorBuffer[y][x] = calculateIllumination(p, currentNormal) * findReflection(p);
     }
   }
 }
 
 vec3 calculateIllumination(const Pixel& p, vec4 currentNormal) {
-  vec4 r = (lightPos - cameraPos) - p.pos3d;
+  vec4 r = (lightPos) - p.pos3d;
   vec3 vec3r = vec3(r);
   float r_magnitude = pow(r[0],2) + pow(r[1],2) + pow(r[2],2);
 
@@ -564,6 +659,11 @@ void toCameraSpace(vector<Triangle>& triangles) {
     triangles[i].v2 = triangles[i].v2 - cameraPos;
     triangles[i].v2.w = 1.0f;
   }
+}
+
+void toCameraSpace(vec4& vector) {
+  vector = vector - cameraPos;
+  vector.w = 1.0f;
 }
 
 /* THIS FUNCTION CLIPS THE VIEWING FRUSTRUM. EACH CASE CORRESPONDS TO A DIFFERENT
@@ -688,7 +788,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -722,7 +822,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -756,7 +856,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -875,7 +975,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -910,7 +1010,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -945,7 +1045,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1064,7 +1164,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1099,7 +1199,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1134,7 +1234,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1253,7 +1353,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1288,7 +1388,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1323,7 +1423,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1434,7 +1534,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1465,7 +1565,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1496,7 +1596,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         // Set the normals to be the same.
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
-        extraTriangle.mirror = triangles[i].mirror;
+        extraTriangle.texture = triangles[i].texture;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1528,9 +1628,9 @@ vector<Triangle> createShadowVolume( vector<Triangle>& triangles ) {
     vec4 v2 = triangles[i].v2;
 
     // Calculate position of new vertices. (Light -> triangle vertex) * arbitrary number.
-    n0 = ((triangles[i].v0 - (lightPos-cameraPos)) * 100.0f);
-    n1 = ((triangles[i].v1 - (lightPos-cameraPos)) * 100.0f);
-    n2 = ((triangles[i].v2 - (lightPos-cameraPos)) * 100.0f);
+    n0 = ((triangles[i].v0 - (lightPos)) * 100.0f);
+    n1 = ((triangles[i].v1 - (lightPos)) * 100.0f);
+    n2 = ((triangles[i].v2 - (lightPos)) * 100.0f);
 
     // Triangle shadowVolume0(v0, v1, v2, vec3(1.0f,1.0f,1.0f));
     // shadowVolume0.normal = triangles[i].normal;
@@ -1578,103 +1678,67 @@ vec3 antiAliasing(int y, int x) {
   return val;
 }
 
-// Get colour of reflected ray.
-vec3 findReflection(const Pixel& p) {
-  // Get incident ray.
-  vec4 incident = p.pos3d - cameraPos;
-  // Get reflected ray.
-  vec4 reflected = incident - currentNormal * (2 * glm::dot(incident, currentNormal));
+int findU(const Pixel& p, int textureSize) {
+  int u = 0;
 
-  // shoot ray and find closest intersection.
-  int index = closestIntersection(reflected);
-  reflection = clippedTriangles[index].color;
-  // for (int i = 0; i < )
-  return reflection;
-}
-
-// As in raytracer, get the closest intersection for the ray from the mirror.
-int closestIntersection(vec4 reflectedRay) {
-  // Store the index of the triangle the ray hits.
-  int index;
-  // Store the current closest distance of intersection.
-  float distanceStore;
-  // Don't check for intersection for large t
-  float bound = std::numeric_limits<float>::max();
-
-  distanceStore = bound;
-  vec3 start3 = vec3(cameraPos);
-  vec3 dir3 = vec3(reflectedRay);
-
-  for (int i = 0; i < clippedTriangles.size(); i++) {
-    vec4 v0 = clippedTriangles[i].v0;
-    vec4 v1 = clippedTriangles[i].v1;
-    vec4 v2 = clippedTriangles[i].v2;
-
-    vec3 e1 = vec3(v1.x - v0.x ,v1.y - v0.y,v1.z - v0.z);
-    vec3 e2 = vec3(v2.x - v0.x ,v2.y - v0.y,v2.z - v0.z);
-    // vec3 b = vec3(start.x-v0.x, start.y-v0.y, start.z-v0.z);
-
-    // Currently: 55000ms without -O3, 600ms with -O3
-    // With Cramer's rule: 47000ms without -O3, 430ms with -O3
-    glm::mat3 system( -dir3, e1, e2 );
-
-    // Use Cramer's rule to produce just t (x[0]). If t is negative, then
-    // return false. Else, continue with calculation
-
-    // Using the linear equation:
-    // (-dir, e1, e2) (t, u, v) = s - v0
-    vec4 solutions = cameraPos - v0;
-    vec3 solutions3 = vec3(solutions[0], solutions[1], solutions[2]);
-
-    // Solving t in using Cramer's rule:
-    // -dir[0]t + e1[0]u + e2[0]v = solutions[0]
-    // -dir[1]t + e1[1]u + e2[1]v = solutions[0]
-    // -dir[2]t + e1[2]u + e2[2]v = solutions[0]
-
-    // Where t = det(system_t)/det(system)
-    glm::mat3 system_t( solutions3, e1, e2 );
-    float t = glm::determinant(system_t)/glm::determinant(system);
-    float d = t * glm::length(dir3);
-
-
-    // If the distance is negative, the intersection does not occur, so carry on to the next one.
-    if (d < 0.0f) continue;
-    // Do distance checks earlier to move on quicker if possible
-    else if (d >= distanceStore || d > bound) continue;
-
-
-    // Similar to t, calculate u and v
-    glm::mat3 system_u( -dir3, solutions3, e2 );
-    float u = glm::determinant(system_u)/glm::determinant(system);
-
-    glm::mat3 system_v( -dir3, e1, solutions3 );
-    float v = glm::determinant(system_v)/glm::determinant(system);
-
-    // x = (t, u, v)
-    // vec3 x = glm::inverse( system ) * b;
-
-    vec4 position = cameraPos + vec4(t * dir3, 0);
-
-    bool check = (u >= 0) && (v >= 0) && ((u + v) <= 1);
-
-    if (check) {
-      distanceStore = d;
-      index = i;
-    }
+  vec4 objectSpace;
+  // Correct to world space coordinates
+  if (yaw != 0) {
+    objectSpace = glm::inverse(R) * p.pos3d;
+    objectSpace = objectSpace + cameraPos;
+    objectSpace.w = 1.0f;
   }
-  return index;
-}
+  else {
+    objectSpace = p.pos3d + cameraPos;
+    objectSpace.w = 1.0f;
+  }
 
-int findU(const Pixel& p) {
-  vec3 objectSpace = vec3(p.pos3d + cameraPos);
+  if (vec3(currentNormal) == leftVec) {
+    u = -textureSize/2*objectSpace.y + textureSize/2;
+    // printf("%f, %f, %f\n", currentNormal.x, currentNormal.y, currentNormal.z);
+  }
+  else if (vec3(currentNormal) == upVec) {
+    u = -textureSize/2*objectSpace.x + textureSize/2;
+    // currentNormal += normalMap[p.y][p.x];
+  }
+  else if (vec3(currentNormal) == rightVec) {
+    u = textureSize/2*objectSpace.y + textureSize/2;
+  }
+  else if (vec3(currentNormal) == downVec) {
+    u = -textureSize/2*objectSpace.x + textureSize/2;
+  }
 
-  int u = -100*objectSpace.y + 100;
   return u;
 }
 
-int findV(const Pixel& p) {
-  vec3 objectSpace = vec3(p.pos3d + cameraPos);
+int findV(const Pixel& p, int textureSize) {
+  int v = 0;
 
-  int v = 100*objectSpace.z + 100;
+  vec4 objectSpace;
+  // Correct to world space coordinates
+  if (yaw != 0) {
+    objectSpace = glm::inverse(R) * p.pos3d;
+    objectSpace = objectSpace + cameraPos;
+    objectSpace.w = 1.0f;
+  }
+  else {
+    objectSpace = p.pos3d + cameraPos;
+    objectSpace.w = 1.0f;
+  }
+
+  if (vec3(currentNormal) == leftVec) {
+    v = textureSize/2*objectSpace.z + textureSize/2;
+    // currentNormal += normalMap[p.y][p.x];
+  }
+  else if(vec3(currentNormal) == upVec){
+    v = -textureSize/2*objectSpace.z + textureSize/2;
+    // currentNormal += normalMap[p.y][p.x];
+  }
+  else if(vec3(currentNormal) == rightVec){
+    v = textureSize/2*objectSpace.z + textureSize/2;
+  }
+  else if(vec3(currentNormal) == downVec){
+    v = -textureSize/2*objectSpace.z + textureSize/2;
+  }
   return v;
 }
