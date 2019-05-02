@@ -44,7 +44,7 @@ int shadowBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 // Initialise light variables
 vec4 lightPos;
 vec4 sceneCoordinatesLightPos(0, -0.5, 0, 1);
-vec3 lightPower = 11.0f*vec3( 1, 1, 1 );
+vec3 lightPower = 20.0f*vec3( 1, 1, 1 );
 vec3 indirectLightPowerPerArea = 0.08f*vec3( 1, 1, 1 );
 
 // Store values to run check against normals
@@ -56,6 +56,7 @@ vec3 downVec(0.0f, -1.0f, 0.0f);
 // Normal and reflectance values to be passed to PixelShader
 vec4 currentNormal;
 vec3 currentReflectance;
+int objectIndex;
 int objectHeight;
 int objectWidth;
 
@@ -66,6 +67,7 @@ cv:: Mat woven_ambientOcclusion;
 cv:: Mat woven_ambientOcclusion_gray;
 cv:: Mat woven_opacity;
 cv:: Mat woven_opacity_gray;
+cv:: Mat wovenNormal;
 cv:: Mat metalGrill;
 cv:: Mat metalGrillOpacity;
 cv:: Mat metalGrillOpacity_gray;
@@ -121,8 +123,8 @@ void toCameraSpace( vector<Triangle>& triangles );
 void toCameraSpace( vec4& vector );
 float surroundingShadowSum( int x, int y );
 vec3 antiAliasing( int y, int x );
-int findU(const Pixel& p, int textureSize);
-int findV(const Pixel& p, int textureSize );
+int findU(const Pixel& p, int textureSize, int index );
+int findV(const Pixel& p, int textureSize, int index );
 
 int main( int argc, char* argv[] )
 {
@@ -137,10 +139,12 @@ int main( int argc, char* argv[] )
   woven = cv::imread("Textures/woven1024x1024.jpg", CV_LOAD_IMAGE_UNCHANGED);
   woven_ambientOcclusion = cv::imread("Textures/Wood_wicker_003_ambientOcclusion.jpg", CV_LOAD_IMAGE_UNCHANGED);
   woven_opacity = cv::imread("Textures/Wood_wicker_003_opacity.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  wovenNormal = cv::imread("Textures/Wood_wicker_003_normal.jpg", CV_LOAD_IMAGE_UNCHANGED);
   // METAL GRILL
   metalGrill = cv::imread("Textures/Metal_Grill_002_basecolor.jpg", CV_LOAD_IMAGE_UNCHANGED);
   metalGrillOpacity = cv::imread("Textures/Metal_Grill_002_opacity.jpg", CV_LOAD_IMAGE_UNCHANGED);
   metalGrillNormalMap = cv::imread("Textures/Metal_Grill_002_normal.jpg", CV_LOAD_IMAGE_UNCHANGED);
+  // imshow("THIS", metalGrillNormalMap);
   /// Convert the image to Gray
   cv::cvtColor( metalGrillOpacity, metalGrillOpacity_gray, CV_BGR2GRAY );
   cv::cvtColor( woven_ambientOcclusion, woven_ambientOcclusion_gray, CV_BGR2GRAY );
@@ -268,6 +272,7 @@ void Draw(screen* screen)
      // Set current colour, reflectance and normal to the colour of the triangle.
      currentColor = clippedTriangles[i].color;
      currentNormal = clippedTriangles[i].normal;
+     objectIndex = clippedTriangles[i].index;
      //currentReflectance = ??;
 
      // Check if texture must be applied
@@ -575,17 +580,20 @@ void PixelShader( Pixel& p, screen* screen ) {
         }
         // Choose normal colour
         else if (texture == 1) {
-          glm::vec3 textureColour(((float)marble.at<cv::Vec3b>(findU(p, 2000), findV(p, 2000))[2]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000), findV(p, 2000))[1]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000), findV(p, 2000))[0]/255.0f));
+          glm::vec3 textureColour(((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[2]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[1]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[0]/255.0f));
           // Get value of added noise to normal from map.
           screenBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal + normalMap_marble[(p.y*marble.rows) + p.x]);
         }
         else if (texture == 2) {
-          if (metalGrillOpacity.at<uchar>(findU(p, 1024), findV(p, 1024)) == 255) {
-            currentNormal.x += metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[0]/255;
-            currentNormal.y += metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[1]/255;
-            currentNormal.z += metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[2]/255;
-            currentNormal = glm::normalize(currentNormal);
-            glm::vec3 textureColour(((float)metalGrill.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[2]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[1]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[0]/255.0f));
+          if (metalGrillOpacity.at<uchar>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex)) == 255) {
+            float valx = (float)metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f;
+            // printf("x %u\n", metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[0]);
+            float valy = (float)metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f;
+            // printf("y %u\n",metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[1]);
+            float valz = (float)metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f;
+            // printf("z %u\n", metalGrillNormalMap.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[2]);
+            glm::vec3 textureColour(((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f));
+            currentNormal = glm::normalize(vec4(valx, valy, valz, 1.0f));
             screenBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal);
           }
           else {
@@ -593,10 +601,14 @@ void PixelShader( Pixel& p, screen* screen ) {
           }
         }
         else if (texture == 3) {
-          if (woven_opacity.at<uchar>(findU(p, 1024), findV(p, 1024)) == 255) {
-            float occlusion = (float)woven_ambientOcclusion.at<uchar>(findU(p, 1024), findV(p, 1024));
-            occlusion /= 510.0f;
-            glm::vec3 textureColour(((float)woven.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[2]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[1]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024), findV(p, 1024))[0]/255.0f));
+          if (woven_opacity.at<uchar>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex)) == 255) {
+            float occlusion = (float)woven_ambientOcclusion.at<uchar>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex));
+            occlusion /= 255.0f;
+            float valx = (float)wovenNormal.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f;
+            float valy = (float)wovenNormal.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f;
+            float valz = (float)wovenNormal.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f;
+            currentNormal = glm::normalize(vec4(valx, valy, valz, 1.0f));
+            glm::vec3 textureColour(((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f));
             screenBuffer[y][x] = textureColour * (calculateIllumination(p, currentNormal) * occlusion);
           }
           else {
@@ -789,6 +801,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -823,6 +836,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -857,6 +871,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         clippedTriangles.push_back(triangles[i]);
         clippedTriangles.push_back(extraTriangle);
@@ -976,6 +991,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1011,6 +1027,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1046,6 +1063,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1165,6 +1183,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1200,6 +1219,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1235,6 +1255,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1354,6 +1375,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1389,6 +1411,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1424,6 +1447,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1535,6 +1559,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_02, newPoint_12, triangles[i].v1, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1566,6 +1591,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_01, newPoint_21, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1597,6 +1623,7 @@ vector<Triangle> clip(vector<Triangle>& triangles, int plane) {
         Triangle extraTriangle(newPoint_10, newPoint_20, triangles[i].v2, triangles[i].color);
         extraTriangle.normal = triangles[i].normal;
         extraTriangle.texture = triangles[i].texture;
+        extraTriangle.index = triangles[i].index;
 
         // Add the new triangles to vector.
         clippedTriangles.push_back(triangles[i]);
@@ -1673,12 +1700,12 @@ vec3 antiAliasing(int y, int x) {
   vec3 val = vec3(0.0f, 0.0f, 0.0f);
   val = screenBuffer[y][x] + screenBuffer[y-1][x] + screenBuffer[y+1][x]  + screenBuffer[y][x-1] +
         screenBuffer[y][x+1];
-  val /= 4.0f;
+  val /= 5.0f;
 
   return val;
 }
 
-int findU(const Pixel& p, int textureSize) {
+int findU(const Pixel& p, int textureSize, int index) {
   int u = 0;
 
   vec4 objectSpace;
@@ -1693,25 +1720,29 @@ int findU(const Pixel& p, int textureSize) {
     objectSpace.w = 1.0f;
   }
 
-  if (vec3(currentNormal) == leftVec) {
+
+  if (index == 3) {
     u = -textureSize/2*objectSpace.y + textureSize/2;
     // printf("%f, %f, %f\n", currentNormal.x, currentNormal.y, currentNormal.z);
   }
-  else if (vec3(currentNormal) == upVec) {
+  else if (index == 1) {
     u = -textureSize/2*objectSpace.x + textureSize/2;
     // currentNormal += normalMap[p.y][p.x];
   }
-  else if (vec3(currentNormal) == rightVec) {
-    u = textureSize/2*objectSpace.y + textureSize/2;
+  else if (index == 4) {
+    u = -textureSize/2*objectSpace.y + textureSize/2;
   }
-  else if (vec3(currentNormal) == downVec) {
+  else if (index == 2) {
+    u = -textureSize/2*objectSpace.x + textureSize/2;
+  }
+  else if (index == 0) {
     u = -textureSize/2*objectSpace.x + textureSize/2;
   }
 
-  return u;
+  return u%textureSize;
 }
 
-int findV(const Pixel& p, int textureSize) {
+int findV(const Pixel& p, int textureSize, int index) {
   int v = 0;
 
   vec4 objectSpace;
@@ -1726,19 +1757,21 @@ int findV(const Pixel& p, int textureSize) {
     objectSpace.w = 1.0f;
   }
 
-  if (vec3(currentNormal) == leftVec) {
-    v = textureSize/2*objectSpace.z + textureSize/2;
-    // currentNormal += normalMap[p.y][p.x];
-  }
-  else if(vec3(currentNormal) == upVec){
-    v = -textureSize/2*objectSpace.z + textureSize/2;
-    // currentNormal += normalMap[p.y][p.x];
-  }
-  else if(vec3(currentNormal) == rightVec){
+  if (index == 3) {
     v = textureSize/2*objectSpace.z + textureSize/2;
   }
-  else if(vec3(currentNormal) == downVec){
+  else if(index == 1) {
+    v = -textureSize/2*objectSpace.z + textureSize/2;
+
+  }
+  else if(index == 4) {
     v = -textureSize/2*objectSpace.z + textureSize/2;
   }
-  return v;
+  else if(index == 2) {
+    v = -textureSize/2*objectSpace.z + textureSize/2;
+  }
+  else if (index == 0) {
+    v = -textureSize/2*objectSpace.y + textureSize/2;
+  }
+  return v%textureSize;
 }
