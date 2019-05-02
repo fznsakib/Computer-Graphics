@@ -6,7 +6,8 @@
 #include <glm/glm.hpp>
 #include <vector>
 
-int setting = 3;
+int setting = 1;
+int settingBoxes = 0;
 
 // Used to describe a triangular surface:
 class Triangle
@@ -144,51 +145,51 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 
 	// Front
 	Triangle a(E,B,A,red);
-	a.texture = 1;
+	a.texture = settingBoxes;
 	a.index = 0;
 	boxes.push_back( a );
 	Triangle s(E,F,B,red);
-	s.texture = 1;
+	s.texture = settingBoxes;
 	s.index = 0;
 	boxes.push_back( s );
 
 	// Front
 	Triangle d(F,D,B,red);
-	d.texture = 1;
+	d.texture = settingBoxes;
 	d.index = 4;
 	boxes.push_back( d );
 	Triangle f(F,H,D,red);
-	f.texture = 1;
+	f.texture = settingBoxes;
 	f.index = 4;
 	boxes.push_back( f );
 
 	// BACK
 	Triangle g(H,C,D,red);
-	g.texture = 1;
+	g.texture = settingBoxes;
 	g.index = 0;
 	boxes.push_back( g );
 	Triangle h(H,G,C,red);
-	h.texture = 1;
+	h.texture = settingBoxes;
 	h.index = 0;
 	boxes.push_back( h );
 
 	// LEFT
 	Triangle j(G,E,C,red);
-	j.texture = 1;
+	j.texture = settingBoxes;
 	j.index = 3;
 	boxes.push_back( j );
 	Triangle k(E,A,C,red);
-	k.texture = 1;
+	k.texture = settingBoxes;
 	k.index = 3;
 	boxes.push_back( k );
 
 	// TOP
 	Triangle l(G,F,E,red);
-	l.texture = 1;
+	l.texture = settingBoxes;
 	l.index = 1;
 	boxes.push_back( l );
 	Triangle q(G,H,F,red);
-	q.texture = 1;
+	q.texture = settingBoxes;
 	q.index = 1;
 	boxes.push_back( q );
 
@@ -207,51 +208,51 @@ void LoadTestModel( std::vector<Triangle>& room, std::vector<Triangle>& boxes )
 
 	// Front
 	Triangle front_tallBlock1(E,B,A,blue);
-	front_tallBlock1.texture = 3;
+	front_tallBlock1.texture = settingBoxes;
 	front_tallBlock1.index = 0;
 	boxes.push_back( front_tallBlock1 );
 	Triangle front_tallBlock2(E,F,B,blue);
-	front_tallBlock2.texture = 3;
+	front_tallBlock2.texture = settingBoxes;
 	front_tallBlock2.index = 0;
 	boxes.push_back( front_tallBlock2 );
 
 	// Front
 	Triangle bottom_tallBlock1(F,D,B,blue);
-	bottom_tallBlock1.texture = 3;
+	bottom_tallBlock1.texture = settingBoxes;
 	bottom_tallBlock1.index = 4;
 	boxes.push_back( bottom_tallBlock1 );
 	Triangle bottom_tallBlock2(F,H,D,blue);
-	bottom_tallBlock2.texture = 3;
+	bottom_tallBlock2.texture = settingBoxes;
 	bottom_tallBlock2.index = 4;
 	boxes.push_back( bottom_tallBlock2 );
 
 	// BACK
 	Triangle back_tallBlock1(H,C,D,blue);
-	back_tallBlock1.texture = 3;
+	back_tallBlock1.texture = settingBoxes;
 	back_tallBlock1.index = 0;
 	boxes.push_back( back_tallBlock1 );
 	Triangle back_tallBlock2(H,G,C,blue);
-	back_tallBlock2.texture = 3;
+	back_tallBlock2.texture = settingBoxes;
 	back_tallBlock2.index = 0;
 	boxes.push_back( back_tallBlock2 );
 
 	// LEFT
 	Triangle left_tallBlock1(G,E,C,blue);
-	left_tallBlock1.texture = 3;
+	left_tallBlock1.texture = settingBoxes;
 	left_tallBlock1.index = 3;
 	boxes.push_back( left_tallBlock1 );
 	Triangle left_tallBlock2(E,A,C,blue);
-	left_tallBlock2.texture = 3;
+	left_tallBlock2.texture = settingBoxes;
 	left_tallBlock2.index = 3;
 	boxes.push_back( left_tallBlock2 );
 
 	// TOP
 	Triangle top_tallBlock1(G,F,E,blue);
-	top_tallBlock1.texture = 3;
+	top_tallBlock1.texture = settingBoxes;
 	top_tallBlock1.index = 1;
 	boxes.push_back( top_tallBlock1 );
 	Triangle top_tallBlock2(G,H,F,blue);
-	top_tallBlock2.texture = 3;
+	top_tallBlock2.texture = settingBoxes;
 	top_tallBlock1.index = 1;
 	boxes.push_back( top_tallBlock2 );
 

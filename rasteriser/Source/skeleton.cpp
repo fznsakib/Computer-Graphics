@@ -39,13 +39,16 @@ vec3 currentColor;
 float depthBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 vec3 screenBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
 int shadowBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+vec3 lowLightBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+vec3 highLightBuffer[SCREEN_HEIGHT][SCREEN_WIDTH];
+
 
 
 // Initialise light variables
 vec4 lightPos;
 vec4 sceneCoordinatesLightPos(0, -0.5, 0, 1);
-vec3 lightPower = 20.0f*vec3( 1, 1, 1 );
-vec3 indirectLightPowerPerArea = 0.08f*vec3( 1, 1, 1 );
+vec3 lightPower = 15.0f*vec3( 1, 1, 1 );
+vec3 indirectLightPowerPerArea = 0.15f*vec3( 1, 1, 1 );
 
 // Store values to run check against normals
 vec3 upVec(0.0f, 1.0f, 0.0f);
@@ -255,6 +258,12 @@ void Draw(screen* screen)
 
   // Clear screen buffer.
   memset(screenBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(glm::vec3));
+
+  // Clear lowLightBuffer.
+  memset(lowLightBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(glm::vec3));
+
+  // Clear highLightBuffer.
+  memset(highLightBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(glm::vec3));
 
   // Clear shadow buffer.
   memset(shadowBuffer, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(int));
@@ -577,12 +586,22 @@ void PixelShader( Pixel& p, screen* screen ) {
         case 0:
         if (texture == 0) {
           screenBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
+          indirectLightPowerPerArea = 0.0f*vec3( 1, 1, 1 );
+          lowLightBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
+          indirectLightPowerPerArea = 0.4f*vec3( 1, 1, 1 );
+          highLightBuffer[y][x] = currentColor * calculateIllumination(p, currentNormal);
+          indirectLightPowerPerArea = 0.2f*vec3( 1, 1, 1 );
         }
         // Choose normal colour
         else if (texture == 1) {
           glm::vec3 textureColour(((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[2]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[1]/255.0f), ((float)marble.at<cv::Vec3b>(findU(p, 2000, objectIndex), findV(p, 2000, objectIndex))[0]/255.0f));
           // Get value of added noise to normal from map.
           screenBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal + normalMap_marble[(p.y*marble.rows) + p.x]);
+          indirectLightPowerPerArea = 0.0f*vec3( 1, 1, 1 );
+          lowLightBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal + normalMap_marble[(p.y*marble.rows) + p.x]);
+          indirectLightPowerPerArea = 0.4f*vec3( 1, 1, 1 );
+          highLightBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal + normalMap_marble[(p.y*marble.rows) + p.x]);
+          indirectLightPowerPerArea = 0.2f*vec3( 1, 1, 1 );
         }
         else if (texture == 2) {
           if (metalGrillOpacity.at<uchar>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex)) == 255) {
@@ -595,6 +614,11 @@ void PixelShader( Pixel& p, screen* screen ) {
             glm::vec3 textureColour(((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f), ((float)metalGrill.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f));
             currentNormal = glm::normalize(vec4(valx, valy, valz, 1.0f));
             screenBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal);
+            indirectLightPowerPerArea = 0.0f*vec3( 1, 1, 1 );
+            lowLightBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal);
+            indirectLightPowerPerArea = 0.4f*vec3( 1, 1, 1 );
+            highLightBuffer[y][x] = textureColour * calculateIllumination(p, currentNormal);
+            indirectLightPowerPerArea = 0.2f*vec3( 1, 1, 1 );
           }
           else {
             p.zinv = 0;
@@ -610,6 +634,11 @@ void PixelShader( Pixel& p, screen* screen ) {
             currentNormal = glm::normalize(vec4(valx, valy, valz, 1.0f));
             glm::vec3 textureColour(((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[2]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[1]/255.0f), ((float)woven.at<cv::Vec3b>(findU(p, 1024, objectIndex), findV(p, 1024, objectIndex))[0]/255.0f));
             screenBuffer[y][x] = textureColour * (calculateIllumination(p, currentNormal) * occlusion);
+            indirectLightPowerPerArea = 0.0f*vec3( 1, 1, 1 );
+            lowLightBuffer[y][x] = textureColour * (calculateIllumination(p, currentNormal) * occlusion);
+            indirectLightPowerPerArea = 0.4f*vec3( 1, 1, 1 );
+            highLightBuffer[y][x] = textureColour * (calculateIllumination(p, currentNormal) * occlusion);
+            indirectLightPowerPerArea = 0.2f*vec3( 1, 1, 1 );
           }
           else {
             p.zinv = 0;
@@ -1698,9 +1727,18 @@ float surroundingShadowSum(int y, int x) {
 // Take average values of the surrounding pixels.
 vec3 antiAliasing(int y, int x) {
   vec3 val = vec3(0.0f, 0.0f, 0.0f);
+  vec3 val1 = vec3(0.0f, 0.0f, 0.0f);
+  vec3 val2 = vec3(0.0f, 0.0f, 0.0f);
   val = screenBuffer[y][x] + screenBuffer[y-1][x] + screenBuffer[y+1][x]  + screenBuffer[y][x-1] +
         screenBuffer[y][x+1];
   val /= 5.0f;
+  val1 = lowLightBuffer[y][x] + lowLightBuffer[y-1][x] + lowLightBuffer[y+1][x]  + lowLightBuffer[y][x-1] +
+        lowLightBuffer[y][x+1];
+  val1 /= 5.0f;
+  val2 = highLightBuffer[y][x] + highLightBuffer[y-1][x] + highLightBuffer[y+1][x]  + highLightBuffer[y][x-1] +
+        highLightBuffer[y][x+1];
+  val2 /= 5.0f;
+  val = (val+val1+val2)/3.0f;
 
   return val;
 }
