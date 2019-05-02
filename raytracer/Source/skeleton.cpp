@@ -92,6 +92,8 @@ vector<Light> lights;
 float yaw = 0.0;
 mat4 R(1.0f);
 vec3 black(0.0,0.0,0.0);
+vec3 indirectLight = 0.5f * vec3(1, 1, 1);
+
 
 vector<Triangle> triangles;
 vector<Sphere> spheres;
@@ -364,15 +366,31 @@ vec3 CastRay( const vec4 &position, const vec4 &dir, const int& depth ) {
 
     // DIFFUSE
     if(intersection.material[0] == 0.5f) {
-      std::cout << "diffuse" << '\n';
+      // std::cout << "diffuse" << '\n';
+      vec3 illumination = vec3(0.0f, 0.0f, 0.0f);
+      for (int i = 0; i < lights.size(); i++) {
+        if (DirectLight( intersection, lights[i] ) != vec3(0.0f, 0.0f, 0.0f)) {
+          illumination += DirectLight( intersection, lights[i] );
+        }
+      }
+
+      // vec3 indirectLight = IndirectLight(pixelColour, intersection.colour, indirectLight);
+
+      hitColour += illumination;
+      // pixelColour + (objectColour * indirectLight
+
+      // hitColour *= indirectLight;
+      // IndirectLight(hitColour, intersection.colour, indirectLight);
+      // std::cout << hitColour.x << hitColour.y << hitColour.z << '\n';
+
     }
     // ONLY REFLECTION
     else if(intersection.material[1] > 0.0f && intersection.material[2] == 0.0f) {
-      std::cout << "reflection" << '\n';
+      // std::cout << "reflection" << '\n';
     }
     // REFLECTION AND REFRACTION
     else if(intersection.material[1] > 0.0f && intersection.material[2] > 0.0f) {
-      std::cout << "refraction" << '\n';
+      // std::cout << "refraction" << '\n';
     }
   }
   // No intersection, so return black
@@ -469,38 +487,39 @@ void Draw(screen* screen) {
 
           Intersection intersection;
           int depth = 0;
-          vec3 pixelColour = CastRay(cameraPos, newDir, depth);
+          pixelColour += CastRay(cameraPos, newDir, depth);
 
+          validRay = true;
 
-          bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection);
-
-          // If light intersects with object then draw it
-          if (closestIntersection == true) {
-            validRay = true;
-            vec3 objectColour = intersection.colour;
-
-            // Direct illumination
-            for (int i = 0; i < lights.size(); i++) {
-              if (DirectLight( intersection, lights[i] ) != vec3(0.0f, 0.0f, 0.0f)) {
-                pixelColour += DirectLight( intersection, lights[i] );
-              }
-            }
-
-            // Indirect illumination for diffuse objects
-            if (intersection.material[1] == 0.0f) {
-              pixelColour = IndirectLight(pixelColour, objectColour, indirectLight);
-            }
-          }
+          // bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection);
+          //
+          // // If light intersects with object then draw it
+          // if (closestIntersection == true) {
+          //   validRay = true;
+          //   vec3 objectColour = intersection.colour;
+          //
+          //   // Direct illumination
+          //   for (int i = 0; i < lights.size(); i++) {
+          //     if (DirectLight( intersection, lights[i] ) != vec3(0.0f, 0.0f, 0.0f)) {
+          //       pixelColour += DirectLight( intersection, lights[i] );
+          //     }
+          //   }
+          //
+          //   // Indirect illumination for diffuse objects
+          //   if (intersection.material[1] == 0.0f) {
+          //     pixelColour = IndirectLight(pixelColour, objectColour, indirectLight);
+          //   }
+          // }
         }
       }
-      if (validRay == true) {
+      // if (validRay == true) {
         // Average light for the multiple rays for anti aliasing
         vec3 averageLight = pixelColour/16.0f;
         PutPixelSDL(screen, u, v, averageLight);
-      }
-      else {
-        PutPixelSDL(screen, u, v, black);
-      }
+      // }
+      // else {
+      //   PutPixelSDL(screen, u, v, black);
+      // }
     }
   }
 }
