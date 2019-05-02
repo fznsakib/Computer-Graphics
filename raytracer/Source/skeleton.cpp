@@ -366,23 +366,20 @@ vec3 CastRay( const vec4 &position, const vec4 &dir, const int& depth ) {
 
     // DIFFUSE
     if(intersection.material[0] == 0.5f) {
-      // std::cout << "diffuse" << '\n';
       vec3 illumination = vec3(0.0f, 0.0f, 0.0f);
+
+      // Compute direct light
       for (int i = 0; i < lights.size(); i++) {
         if (DirectLight( intersection, lights[i] ) != vec3(0.0f, 0.0f, 0.0f)) {
           illumination += DirectLight( intersection, lights[i] );
         }
       }
 
-      // vec3 indirectLight = IndirectLight(pixelColour, intersection.colour, indirectLight);
-
+      // Add direct light
       hitColour += illumination;
-      // pixelColour + (objectColour * indirectLight
 
-      // hitColour *= indirectLight;
-      // IndirectLight(hitColour, intersection.colour, indirectLight);
-      // std::cout << hitColour.x << hitColour.y << hitColour.z << '\n';
-
+      // Add indirect light
+      hitColour = IndirectLight(hitColour, intersection.colour, indirectLight);
     }
     // ONLY REFLECTION
     else if(intersection.material[1] > 0.0f && intersection.material[2] == 0.0f) {
