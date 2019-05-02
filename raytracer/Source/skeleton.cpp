@@ -28,6 +28,7 @@ SDL_Event event;
 #define SCREEN_HEIGHT 256
 #define FULLSCREEN_MODE false
 
+
 // Maximum reflection/refraction depth
 #define MAX_RAY_DEPTH 5
 
@@ -36,13 +37,13 @@ SDL_Event event;
 // - Cramer's rule
 // - Load sphere
 // - Convert point light to area
+// - Reflection
 
 // To do
-// - Reflectance and Refraction
+// - Refraction
 // - Build kd tree
 // - Photon mapping
-// - Fix rotation
-// - Bump maps?
+// - Procedural floors/walls
 
 /* ----------------------------------------------------------------------------*/
 /* STRUCTS                                                                   */
@@ -81,6 +82,9 @@ struct KDTree {
 /* ----------------------------------------------------------------------------*/
 /* VARIABLES                                                                   */
 /* ----------------------------------------------------------------------------*/
+
+const float TRANSLATION = 0.25f;
+const float ROTATION = 0.125f;
 
 float focalLength = 256;
 vec4 cameraPos( 0.0, 0.0, -3.0, 1.0);
@@ -167,6 +171,7 @@ KDTree* BalanceTree( vector<Photon*> photonPointers ) {
     return lhs->position[GetCurrentMaxDimension()] < rhs->position[GetCurrentMaxDimension()];
   });
 
+  // KDTree* tree = malloc(1 * sizeof(KDTree));
   KDTree tree;
 
   // Find median photon, leftTree and rightTree
@@ -182,7 +187,7 @@ KDTree* BalanceTree( vector<Photon*> photonPointers ) {
   // If one more photon left to balance then assign node to it and return
   if (photonPointers.size() == 1) {
     tree.node = photonPointers[0];
-    return &tree;
+    // return &tree;
   }
 
   tree.node = photonPointers[medianIndex];
@@ -323,9 +328,11 @@ int main( int argc, char* argv[] )
   }
 
   // Create and balance photon kd tree
-  // globalPhotonTree = BalanceTree(globalPhotonPointers);
+  // globalPhotonTree = (KDTree*)malloc(sizeof(KDTree));
   //
-  // // std::cout << globalPhotonTree << '\n';
+  // globalPhotonTree = BalanceTree(globalPhotonPointers);
+
+  // std::cout << globalPhotonTree << '\n';
   // std::cout << globalPhotonTree->node << '\n';
   // std::cout << globalPhotonTree->node->position.x << '\n';
   // std::cout << globalPhotonTree->left->node->position.x << '\n';
@@ -365,6 +372,7 @@ void Draw(screen* screen) {
       vec4 dir = (vec4((u - SCREEN_WIDTH/2), v - SCREEN_HEIGHT/2, focalLength, 1.0));
       // Calculate the new direction vector after yaw rotation
       dir = R * dir;
+      glm::normalize(dir);
 
       // Apply global photon mapping
       // Intersection intersection;
@@ -488,56 +496,54 @@ bool Update() {
 	      {
           // LIGHT MOVEMENT
           case SDLK_w:
-            lights[0].position += vec4(0, 0, 0.1, 0);
+            lights[0].position += vec4(0, 0, TRANSLATION, 0);
           break;
           case SDLK_s:
-            lights[0].position += vec4(0, 0, -0.1, 0);
+            lights[0].position += vec4(0, 0, -TRANSLATION, 0);
           break;
           case SDLK_a:
-            lights[0].position += vec4(-0.1, 0, 0, 0);
+            lights[0].position += vec4(-TRANSLATION, 0, 0, 0);
           break;
           case SDLK_d:
-            lights[0].position += vec4(0.1, 0, 0, 0);
-            // std::cout << lights[0].position[0] << '\n';
+            lights[0].position += vec4(TRANSLATION, 0, 0, 0);
           break;
           case SDLK_q:
-            lights[0].position += vec4(0, -0.1, 0, 0);
+            lights[0].position += vec4(0, -TRANSLATION, 0, 0);
           break;
           case SDLK_e:
-            lights[0].position += vec4(0, 0.1, 0, 0);
+            lights[0].position += vec4(0, TRANSLATION, 0, 0);
           break;
 
           // CAMERA MOVEMENT
 	        case SDLK_UP:
-		        cameraPos += vec4(0, 0, 0.1, 0);
-            cout << "KEYPRESS UP." <<endl;
+		        cameraPos += vec4(0, 0, TRANSLATION, 0);
 		      break;
 	        case SDLK_DOWN:
-		        cameraPos += vec4(0, 0, -0.1, 0);
-            cout << "KEYPRESS DOWN." <<endl;
+		        cameraPos += vec4(0, 0, -TRANSLATION, 0);
 		      break;
 	        case SDLK_LEFT:
-		        cameraPos += vec4(-0.1, 0, 0, 0);
-            cout << "KEYPRESS <-." <<endl;
+		        cameraPos += vec4(-TRANSLATION, 0, 0, 0);
 		      break;
 	        case SDLK_RIGHT:
-		        cameraPos += vec4(0.1, 0, 0, 0);
-            cout << "KEYPRESS ->." <<endl;
+		        cameraPos += vec4(TRANSLATION, 0, 0, 0);
 		      break;
+
           // CAMERA ROTATION
           case SDLK_n:
-            cout << "KEYPRESS a." <<endl;
-            yaw -= 0.174533;
-            R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
+            cout << "KEYPRESS n" <<endl;
+            yaw -= ROTATION;
+            R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = sin(yaw);
             R[1][0] = 0;          R[1][1] = 1;   R[1][2] = 0;
-            R[2][0] = sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
+            R[2][0] = -sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
           break;
           case SDLK_m:
-            yaw += 0.174533;
-            R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = -sin(yaw);
+            cout << "KEYPRESS m" <<endl;
+            yaw += ROTATION;
+            R[0][0] = cos(yaw);   R[0][1] = 0;   R[0][2] = sin(yaw);
             R[1][0] = 0;          R[1][1] = 1;   R[1][2] = 0;
-            R[2][0] = sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
+            R[2][0] = -sin(yaw);   R[2][1] = 0;   R[2][2] = cos(yaw);
           break;
+
           // FOCAL LENGTH CHANGE
           case SDLK_i:
             focalLength += 10;
@@ -610,32 +616,33 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       }
     }
 
+    // If no intersection then return black
     if (closestIntersection.distance == bound) {
       closestIntersection.colour = vec3(0.0f, 0.0f, 0.0f);
       return false;
     }
 
     // Reflection
-    if (closestIntersection.material[1] > 0.0f && closestIntersection.material[2] == 0.0f) {
-      Intersection reflection;
-
-      // Calculate new reflected direction of ray
-      vec4 reflectionDir = glm::reflect(dir, closestIntersection.normal);
-      vec3 indirectLight = 0.5f * vec3(1, 1, 1);
-
-      // Trace reflected ray
-      if (ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection, 0)) {
-        vec3 colour = IndirectLight(closestIntersection.colour, reflection.colour, indirectLight);
-        reflection.colour = colour;
-      }
-      else {
-        return false;
-      }
-
-      closestIntersection.colour = reflection.colour;
-
-      return true;
-    }
+    // if (closestIntersection.material[1] > 0.0f && closestIntersection.material[2] == 0.0f) {
+    //   Intersection reflection;
+    //
+    //   // Calculate new reflected direction of ray
+    //   vec4 reflectionDir = glm::reflect(dir, closestIntersection.normal);
+    //   vec3 indirectLight = 0.5f * vec3(1, 1, 1);
+    //
+    //   // Trace reflected ray
+    //   if (ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection, 0)) {
+    //     vec3 colour = IndirectLight(closestIntersection.colour, reflection.colour, indirectLight);
+    //     reflection.colour = colour;
+    //   }
+    //   else {
+    //     return false;
+    //   }
+    //
+    //   closestIntersection.colour = reflection.colour;
+    //
+    //   return true;
+    // }
 
 
     // REFLECTION AND REFRACTION
@@ -649,29 +656,32 @@ bool ClosestIntersection( vec4 start, vec4 dir,
       inside = true;
     }
 
-    // float transmission = 1.0f - (closestIntersection.material[1] + closestIntersection.material[2]);
+    vec3 indirectLight = 0.5f * vec3(1, 1, 1);
+    float specular = closestIntersection.material[1];
+    float transmission = closestIntersection.material[2];
     Intersection reflection;
     Intersection refraction;
 
     // Check if reflective or refractive
-    if ((closestIntersection.material[1] > 0.0f && closestIntersection.material[2] > 0.0f) && depth < MAX_RAY_DEPTH) {
+    if ((specular > 0.0f || transmission > 0.0f) && depth < MAX_RAY_DEPTH) {
       float facingratio = -glm::dot(dir, closestIntersection.normal);
 
-      // Change the reflection/refraction mix value to tweak the effect
+      // Reflection/refraction mix value
       float fresnelEffect = mix(pow(1 - facingratio, 3), 1, 0.1);
 
       // Calculate new reflected direction of ray
       vec4 reflectionDir;
       GetReflectedDirection(dir, closestIntersection.normal, reflectionDir);
 
-      glm::normalize(reflectionDir);
-
       // Trace reflected ray
       depth += 1;
-      ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection, depth);
+      if (ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), reflectionDir, reflection, depth)) {
+        vec3 colour = IndirectLight(closestIntersection.colour, reflection.colour, indirectLight);
+        reflection.colour = colour;
+      }
 
       // Check if refractive
-      if (closestIntersection.material[2] > 0.0f) {
+      if (transmission > 0.0f) {
         // Compute index of refraction depending on whether light is inside or outside object
         float ior = 1.5;
         float eta = (inside) ? ior : 1 / ior;
@@ -679,16 +689,28 @@ bool ClosestIntersection( vec4 start, vec4 dir,
         // Calculate new refracted direction of ray
         vec4 refractionDir;
         GetRefractedDirection(dir, closestIntersection.normal, eta, refractionDir);
+        glm::normalize(refractionDir);
 
         // Trace refracted ray
         depth += 1;
-        ClosestIntersection(closestIntersection.position + (closestIntersection.normal * 0.00001f), refractionDir, refraction, depth);
+        ClosestIntersection(closestIntersection.position - (closestIntersection.normal * 0.00001f), refractionDir, refraction, depth);
       }
 
+      // std::cout << "reflection colour: " << reflection.colour.x << reflection.colour.y << reflection.colour.z << '\n';
+      // std::cout << "refraction colour: " << refraction.colour.x << refraction.colour.y << refraction.colour.z << '\n';
+
+      // std::cout << fresnelEffect << '\n';
+
       // Now compute the mix of reflection and refraction colours
-      vec3 computedColour = ((reflection.colour * fresnelEffect) +
-                            (refraction.colour * (1 - fresnelEffect) * closestIntersection.material[2]))
-                            * closestIntersection.colour;
+      // vec3 computedColour = ((reflection.colour * fresnelEffect) +
+      //                       (refraction.colour * (1 - fresnelEffect) * transmission)
+      //                       * closestIntersection.colour);
+
+      // std::cout << refraction.colour.x << '\n';
+      vec3 computedColour = reflection.colour + refraction.colour;
+      // vec3 computedColour = refraction.colour;
+
+      // std::cout << computedColour.x << computedColour.y << computedColour.z << '\n';
 
       closestIntersection.colour += computedColour;
     }
