@@ -861,10 +861,6 @@ KDTree* BalanceTree( vector<Photon*> photonPointers ) {
     tree->left = endTree;
     tree->right = endTree;
 
-    // tree->left->node = endPhoton;
-    // tree->right->node = endPhoton;
-
-
     return tree;
   }
 

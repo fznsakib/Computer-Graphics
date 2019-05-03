@@ -1,0 +1,11 @@
+Report
+
+- 50% lab
+- Anti aliasing (This is turned off in screenshot due to render time)
+- Cramer's rule to produce t to determine intersection early
+- Loading spheres
+- Using square area light instead of point light
+- Reflection
+- Refraction
+- Photon mapping using Russian Roulette
+- KD tree for storing photon map (Fully implemented but not producing correct result :( )
