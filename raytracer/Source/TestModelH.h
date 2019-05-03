@@ -164,6 +164,10 @@ public:
 		if (check) return true;
 		else return false;
   }
+
+	void getSurfaceTexture() {
+
+	}
 };
 
 // Loads the Cornell Box. It is scaled to fill the volume:
