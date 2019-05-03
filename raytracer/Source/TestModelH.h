@@ -198,9 +198,6 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec3 chrome(0.0f, 0.95f, 0.0f);
 	vec3 glass(0.0f, 0.0f, 0.95f);
 
-	// vec3 glass(0.0f, 0.7f, 0.2f);
-
-
 
 	triangles.clear();
 	triangles.reserve( 5*2*3 );

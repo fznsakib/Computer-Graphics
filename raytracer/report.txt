@@ -8,4 +8,8 @@ Report
 - Reflection
 - Refraction
 - Photon mapping using Russian Roulette
-- KD tree for storing photon map (Fully implemented but not producing correct result :( )
+- KD tree for storing photon map (Implemented but not producing correct result :( )
+  - KD tree data structure working (No seg faults and pointers point to correct data)
+  - Balancing of KD tree working (Depth of tree on both sides has max difference of one)
+  - Photons being returned are the nearest
+  - However, hardly any photons being returned, and nearest neighbour search is slower than expected
