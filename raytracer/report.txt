@@ -1,15 +1,25 @@
-Report
+Instructions
+----------
+Make to build and run as normal.
 
-- 50% lab
-- Anti aliasing (This is turned off in screenshot due to render time)
+Basic 50%
+----------
+- Complete.
+
+Extensions
+----------
+- Anti aliasing (This is turned off by default and in screenshot due to render time)
 - Cramer's rule to produce t to determine intersection early
 - Loading spheres
 - Using square area light instead of point light
 - Reflection
 - Refraction
 - Photon mapping using Russian Roulette
-- KD tree for storing photon map (Implemented but not producing correct result :( )
-  - KD tree data structure working (No seg faults and pointers point to correct data)
-  - Balancing of KD tree working (Depth of tree on both sides has max difference of one)
-  - Photons being returned are the nearest
-  - However, hardly any photons being returned, and nearest neighbour search is slower than expected
+- KD tree for storing photon map (Implemented but not producing correct result :( ):
+  - Working:
+    - KD tree data structure working (No seg faults and pointers point to correct data)
+    - Dimensions for sorting to find median being chosen correctly
+    - Balancing of KD tree working (Depth of tree on both sides has max difference of one)
+    - Photons being returned for radiance estimate seem to be the nearest
+  - Not working:
+    - Something wrong with nearest neighbour search as it is slower than expected and giving wrong output (image attached)
