@@ -194,9 +194,9 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 
 	// Define material:
 	// Material = (diffuse, specular, transmission)
-	vec3 matte(0.5f, 0.0f, 0.0f);
-	vec3 chrome(0.0f, 0.8f, 0.0f);
-	vec3 glass(0.0f, 0.1f, 0.8f);
+	vec3 matte(0.95f, 0.0f, 0.0f);
+	vec3 chrome(0.0f, 0.95f, 0.0f);
+	vec3 glass(0.0f, 0.0f, 0.95f);
 
 	// vec3 glass(0.0f, 0.7f, 0.2f);
 
@@ -224,6 +224,7 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	// Floor:
 	triangles.push_back( Triangle( C, B, A, white, matte ) );
 	triangles.push_back( Triangle( C, D, B, white, matte ) );
+
 
 	// Left wall
 	triangles.push_back( Triangle( A, E, C, cyan, matte ) );
@@ -344,13 +345,15 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec3 centre;
 	float radius;
 
-	centre = vec3(0.45, 0.5, -0.1);
+	centre = vec3(-0.5, 0.65, -0.8);
+	radius = 0.3;
+	spheres.push_back(Sphere(centre, radius, black, glass));
+
+	centre = vec3(0.45, 0.6, -0.1);
   radius = 0.4;
 	spheres.push_back(Sphere(centre, radius, black, chrome));
 
-	centre = vec3(-0.5, 0.6, -0.8);
-	radius = 0.3;
-	spheres.push_back(Sphere(centre, radius, black, glass));
+
 
 
 }

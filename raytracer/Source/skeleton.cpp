@@ -24,8 +24,8 @@ SDL_Event event;
 // Default - 320 x 256 / focalLength = 256 / z = -3.0
 // Medium  - 800 x 640
 // Change to 1280 x 720 / focalLength = 1024 / z = -4.2
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 256
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 640
 #define FULLSCREEN_MODE false
 
 
@@ -88,8 +88,8 @@ struct KDTree {
 const float TRANSLATION = 0.25f;
 const float ROTATION = 0.125f;
 
-float focalLength = 256;
-vec4 cameraPos( 0.0, 0.0, -3.0, 1.0);
+float focalLength = 1024;
+vec4 cameraPos( 0.0, 0.0, -4.2, 1.0);
 vector<Light> lights;
 float yaw = 0.0;
 mat4 R(1.0f);
@@ -107,10 +107,15 @@ vector<Photon*> globalPhotonPointers;
 KDTree* globalPhotonTree;
 
 int currentMaxDimension;
+// int radianceCount = 500;
+// int noNode = -1;
+// float searchRadius = 0.05f;
+// int noOfPhotons = 20000;
+
 int radianceCount = 500;
 int noNode = -1;
-float searchRadius = 0.05f;
-int noOfPhotons = 20000;
+float searchRadius = 0.1f;
+int noOfPhotons = 100000;
 
 KDTree* endTree = (KDTree*)malloc(1 * sizeof(KDTree));
 Photon* endPhoton = (Photon*)malloc(1 * sizeof(Photon));
@@ -150,7 +155,7 @@ int main( int argc, char* argv[] ) {
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.2, -0.7, 1.0 );
-  light.colour = vec3( 750.0f * vec3( 1, 1, 1 ));
+  light.colour = vec3( 250.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
@@ -251,91 +256,39 @@ void Draw(screen* screen) {
       vec3 averageLight = vec3(0.0f, 0.0f, 0.0f);
 
 
-      for (int i = -1; i <= 1; ++i) {
-        for (int j = -1; j <= 1; ++j ) {
+      // for (int i = -1; i <= 1; ++i) {
+      //   for (int j = -1; j <= 1; ++j ) {
           // Multiply i and j by distance to surrounding rays being used
           float multiplier = 0.25;
-          vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
+          // vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
 
           // Trace ray into scene
           Intersection intersection;
 
-          if (ClosestIntersection(cameraPos, newDir, intersection)) {
+          if (ClosestIntersection(cameraPos, dir, intersection)) {
 
             // RENDER SPECULAR OBJECTS
             if (intersection.material[1] > 0.0f || intersection.material[2] > 0.0f) {
               int depth = 0;
               averageLight += CastRay(cameraPos, dir, depth);
-              // PutPixelSDL(screen, u, v, totalRadiance);
+              PutPixelSDL(screen, u, v, averageLight);
               continue;
             }
 
             // RENDER GLOBAL PHOTON MAP
             averageLight += RadianceEstimate(intersection.position);
           }
-        }
-      }
-      // PutPixelSDL(screen, u, v, totalRadiance);
+      //   }
+      // }
+      PutPixelSDL(screen, u, v, averageLight);
 
-      PutPixelSDL(screen, u, v, averageLight/9.0f);
+      // PutPixelSDL(screen, u, v, averageLight/9.0f);
 
       pixelsRendered += 1;
     }
     std::cout << pixelsRendered << " pixels out of " << pixelsToRender << " rendered" << '\n';
   }
 }
-
-
-      // // OLD RENDERING METHOD
-      // vec3 pixelColour = vec3(0.0f, 0.0f, 0.0f);
-      // bool validRay = false;
-      //
-      // // Trace multiple rays around each ray and average color for anti aliasing
-      // // Change to 4 x 4 later
-      // for (int i = -2; i <= 2; ++i) {
-      //   for (int j = -2; j <= 2; ++j ) {
-      //     // Multiply i and j by distance to surrounding rays being used
-      //     float multiplier = 0.25;
-      //     vec4 newDir = vec4(dir.x + (multiplier * i), dir.y + (multiplier * j), focalLength, 1.0);
-      //
-      //     Intersection intersection;
-      //     int depth = 0;
-      //     pixelColour += CastRay(cameraPos, newDir, depth);
-      //
-      //     validRay = true;
-      //
-      //     // bool closestIntersection = ClosestIntersection(cameraPos, newDir, intersection);
-      //     //
-      //     // // If light intersects with object then draw it
-      //     // if (closestIntersection == true) {
-      //     //   validRay = true;
-      //     //   vec3 objectColour = intersection.colour;
-      //     //
-      //     //   // Direct illumination
-      //     //   for (int i = 0; i < lights.size(); i++) {
-      //     //     if (DirectLight( intersection, lights[i] ) != vec3(0.0f, 0.0f, 0.0f)) {
-      //     //       pixelColour += DirectLight( intersection, lights[i] );
-      //     //     }
-      //     //   }
-      //     //
-      //     //   // Indirect illumination for diffuse objects
-      //     //   if (intersection.material[1] == 0.0f) {
-      //     //     pixelColour = IndirectLight(pixelColour, objectColour, indirectLight);
-      //     //   }
-      //     // }
-      //   }
-      // }
-      // if (validRay == true) {
-        // Average light for the multiple rays for anti aliasing
-        // vec3 averageLight = pixelColour/16.0f;
-        // PutPixelSDL(screen, u, v, averageLight);
-      // }
-      // else {
-      //   PutPixelSDL(screen, u, v, black);
-      // }
-//     }
-//   }
-// }
 
 
 /*Place updates of parameters here*/
@@ -439,7 +392,7 @@ vec3 CastRay( const vec4 &position, const vec4 &dir, const int& depth ) {
     // Decide what to do depending on material
 
     // DIFFUSE
-    if(intersection.material[0] == 0.5f) {
+    if(intersection.material[0] > 0.0f) {
       // vec3 illumination = vec3(0.0f, 0.0f, 0.0f);
 
       // Compute direct light
@@ -457,8 +410,8 @@ vec3 CastRay( const vec4 &position, const vec4 &dir, const int& depth ) {
 
       hitColour = RadianceEstimate(intersection.position);
     }
-    // ONLY REFLECTION
-    else if(intersection.material[1] > 0.0f && intersection.material[2] == 0.0f) {
+    // REFLECTION
+    else if (intersection.material[1] == 0.0f && intersection.material[2] > 0.0f) {
 
       // Compute the new reflected direction
       vec4 reflectedDir;
@@ -467,41 +420,23 @@ vec3 CastRay( const vec4 &position, const vec4 &dir, const int& depth ) {
 
       hitColour += 0.8f * CastRay(intersection.position + (intersection.normal * 0.00001f), reflectedDir, depth + 1);
     }
-    // REFLECTION AND REFRACTION
-    else if(intersection.material[1] > 0.0f && intersection.material[2] > 0.0f) {
-      vec3 reflectionColour = vec3(0.0f, 0.0f, 0.0f);
+    // REFRACTION
+    else if(intersection.material[1] > 0.0f && intersection.material[2] == 0.0f) {
       vec3 refractionColour = vec3(0.0f, 0.0f, 0.0f);
 
       // Index of refraction for glass
-      float ior = 1.2;
-
-      // Compute fresnel
-      // float kr = 1.0f;
-      // GetFresnel(dir, intersection.normal, ior, kr);
+      float ior = 1.5;
 
       bool outside = (glm::dot(dir, intersection.normal) < 0);
       vec4 offset = 0.00001f * intersection.normal;
 
-      // Compute refraction ray if it is not a case of total internal reflection
-      // if (kr < 1) {
-        vec4 refractedDir;
-        GetRefractedDirection(dir, intersection.normal, ior, refractedDir);
-        glm::normalize(refractedDir);
-        vec4 refractionRayOrigin = outside ? intersection.position - offset : intersection.position + offset;
-        // Recursively cast refracted ray until depth is reached
-        refractionColour = CastRay(refractionRayOrigin, refractedDir, depth + 1);
-      // }
+      vec4 refractedDir;
+      GetRefractedDirection(dir, intersection.normal, ior, refractedDir);
+      glm::normalize(refractedDir);
+      vec4 refractionRayOrigin = outside ? intersection.position - offset : intersection.position + offset;
+      // Recursively cast refracted ray until depth is reached
+      refractionColour += CastRay(refractionRayOrigin, refractedDir, depth + 1);
 
-
-      vec4 reflectedDir;
-      GetReflectedDirection(dir, intersection.normal, reflectedDir);
-      glm::normalize(reflectedDir);
-      vec4 reflectionRayOrigin = outside ? intersection.position + offset : intersection.position - offset;
-      reflectionColour = CastRay(reflectionRayOrigin, reflectedDir, depth + 1);
-
-      // Mix the relection and refraction to get one colour
-      // hitColour += (reflectionColour * kr) + (refractionColour * (1 - kr));
-      // hitColour += refractionColour * (1 - kr);
       hitColour += refractionColour;
 
     }
@@ -730,22 +665,21 @@ void TracePhoton(Photon &photon) {
       //
       // }
 
-
-
     }
     // SPECULAR REFLECTION
     else if (materialValue < (intersection.material[0] + intersection.material[1])) {
       // Reflect photon with new position in new direction
+
       photon.position = vec3(intersection.position);
       vec4 reflectedDir;
       vec4 incident = vec4(photon.direction.x, photon.direction.y, photon.direction.z, 1.0f);
       GetReflectedDirection(incident, intersection.normal, reflectedDir);
       photon.direction = vec3(reflectedDir);
+
       // Don't store photon as this will be done by the raytracer
     }
     // TRANSMISSION
     else if (materialValue < (intersection.material[0] + intersection.material[1] + intersection.material[2])) {
-
       bool outside = (glm::dot(photon.direction, vec3(intersection.normal)) < 0);
       vec3 offset = 0.00001f * vec3(intersection.normal);
 
@@ -754,6 +688,8 @@ void TracePhoton(Photon &photon) {
       GetRefractedDirection(incident, intersection.normal, 1.5, refractedDir);
 
       vec3 refractionRayOrigin = outside ? vec3(intersection.position) - offset : vec3(intersection.position) + offset;
+
+      globalPhotonMap.push_back(photon);
 
       photon.position = refractionRayOrigin;
       photon.direction = vec3(refractedDir);
