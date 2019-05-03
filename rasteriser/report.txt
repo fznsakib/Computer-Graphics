@@ -1,0 +1,32 @@
+Basic 50%
+----------
+- Complete.
+
+Extensions
+----------
+- Full clipping in 4d space, including far plane. Instead of working on vertices,
+  we performed clipping on the vector of triangles. With only 3 cases (0,1,2 vertices
+  outside clipping plane) for each triangle, we can cover all cases, and all
+  triangles are of fairly similar sizes and can be connected perfectly.
+
+- Colour modes. When running, press spacebar to cycle between normal, white noise
+  and night vision mode.
+
+- Anti aliasing, average of the pixel and its 4 neighbours taken.
+
+- Volume shadows, done slightly different from the standard way. A shadow buffer
+  is used. Triangles are created with lines from the light position to the vertex
+  of the boxes, then extending to ‘infinity’. Reduce light intensity at areas
+  where shadow triangles exist. Reduce less at the edges and more in the centre
+  of the triangles to give softer shadows. Only casted on the subjects of the scene
+  (boxes) for efficiency.
+
+- Texture, opacity, occlusion and normal mapping. Marble texture uses randomly
+  generated small values to add to the plane normal to give a rough feel, whereas
+  the other textures were downloaded online along with their normal, occlusion and
+  opacity maps.
+
+- HDR rendering (sort of??), 3 screen buffers are used, and the scene is rendered
+  with various amount of indirect light. The average of these are taken to be
+  printed on the screen. This helped with soft shadows and made the scene look
+  more natural.
