@@ -194,6 +194,9 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec3 chrome(0.0f, 0.8f, 0.0f);
 	vec3 glass(0.0f, 0.1f, 0.8f);
 
+	// vec3 glass(0.0f, 0.7f, 0.2f);
+
+
 
 	triangles.clear();
 	triangles.reserve( 5*2*3 );
@@ -337,13 +340,13 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec3 centre;
 	float radius;
 
-	centre = vec3(0.45, 0.6, -0.1);
+	centre = vec3(0.45, 0.0, -0.1);
   radius = 0.4;
-	spheres.push_back(Sphere(centre, radius, black, glass));
+	spheres.push_back(Sphere(centre, radius, black, chrome));
 
 	centre = vec3(-0.5, 0.6, -0.8);
 	radius = 0.3;
-	spheres.push_back(Sphere(centre, radius, black, chrome));
+	spheres.push_back(Sphere(centre, radius, black, glass));
 
 
 }
