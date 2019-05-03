@@ -340,7 +340,7 @@ void LoadTestModel( std::vector<Triangle>& triangles, std::vector<Sphere>& spher
 	vec3 centre;
 	float radius;
 
-	centre = vec3(0.45, 0.0, -0.1);
+	centre = vec3(0.45, 0.5, -0.1);
   radius = 0.4;
 	spheres.push_back(Sphere(centre, radius, black, chrome));
 

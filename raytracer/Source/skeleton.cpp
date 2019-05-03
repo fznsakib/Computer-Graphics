@@ -110,8 +110,8 @@ KDTree* globalPhotonTree;
 int currentMaxDimension;
 int radianceCount = 500;
 int noNode = -1;
-float searchRadius = 0.1f;
-int noOfPhotons = 20000;
+float searchRadius = 0.05f;
+int noOfPhotons = 500000;
 
 KDTree* endTree = (KDTree*)malloc(1 * sizeof(KDTree));
 Photon* endPhoton = (Photon*)malloc(1 * sizeof(Photon));
@@ -152,7 +152,7 @@ int main( int argc, char* argv[] ) {
   // Initialise lights
   Light light;
   light.position = vec4( 0, -0.2, -0.7, 1.0 );
-  light.colour = vec3( 500.0f * vec3( 1, 1, 1 ));
+  light.colour = vec3( 750.0f * vec3( 1, 1, 1 ));
   lights.push_back(light);
 
   // Initialise surfaces
@@ -630,7 +630,6 @@ vec3 IndirectLight( const vec3 pixelColour, const vec3 objectColour, const vec3 
 
 void PhotonEmission( const int noOfPhotons ) {
   int photonsEmitted = 0;
-  float x, y, z;
 
   // Keep emitting photons until max number reached
   while (photonsEmitted < noOfPhotons) {
@@ -650,11 +649,15 @@ void PhotonEmission( const int noOfPhotons ) {
 
 
     // Randomly choose RGB colour for colour bleeding photon map
-    float randomColourPicker = rand() % 3;
+    // float randomColourPicker = rand() % 3;
+    //
+    // if (randomColourPicker == 0)      photon.power = vec3(1.0f, 0.0f, 0.0f);
+    // else if (randomColourPicker == 1) photon.power = vec3(0.0f, 1.0f, 0.0f);
+    // else                              photon.power = vec3(0.0f, 0.0f, 1.0f);
 
-    if (randomColourPicker == 0)      photon.power = vec3(1.0f, 0.0f, 0.0f);
-    else if (randomColourPicker == 1) photon.power = vec3(0.0f, 1.0f, 0.0f);
-    else                              photon.power = vec3(0.0f, 0.0f, 1.0f);
+    // photon.power = photon.power/(float)noOfPhotons;
+
+    // photon.power = lights[0].colour / (float)noOfPhotons;
 
 
     // Trace photon from light position in photon direction dir
@@ -679,16 +682,29 @@ void TracePhoton(Photon &photon) {
     }
 
     // Use Russian Roulette on material properties to decide to photon action
-    float random = RandomFloat(0.0f, 1.0f);
+    float materialValue = RandomFloat(0.0f, 1.0f);
+
+    // Use secondary Russian Roulette on colour properties
+    // float colourValue = RandomFloat(0.0f, 1.0f);
+    //
+    // float dominantPhotonColour = photon.power[0];
+    // int colourIndex = 0;
+    //
+    // for (int i = 0; i < 3; i++) {
+    //   if (photon.power[i] > dominantPhotonColour) {
+    //     dominantPhotonColour = photon.power[i];
+    //     colourIndex = i;
+    //   }
+    // }
+
 
     // Add photon for each intersection
     // DIFFUSE REFLECTION
-    if (random < intersection.material[0]) {
+    if (materialValue < intersection.material[0]) {
       // Reflect photon with new position in new direction
       photon.position = vec3(intersection.position);
       photon.power = photon.power * intersection.colour;
 
-      // Absorb depending on colour
       globalPhotonMap.push_back(photon);
 
       // Reflect in random direction
@@ -700,9 +716,25 @@ void TracePhoton(Photon &photon) {
       }
 
       photon.direction = vec3(randomDirection);
+
+
+      // Absorb depending on colour
+      // if (colourValue < intersection.colour[colourIndex]) {
+      //   photonAbsorbed = true;
+      // }
+      // else {
+      //
+      //   photon.power = photon.power * intersection.colour;
+      //
+      //   globalPhotonMap.push_back(photon);
+      //
+      // }
+
+
+
     }
     // SPECULAR REFLECTION
-    else if (random < (intersection.material[0] + intersection.material[1])) {
+    else if (materialValue < (intersection.material[0] + intersection.material[1])) {
       // Reflect photon with new position in new direction
       photon.position = vec3(intersection.position);
       vec4 reflectedDir;
@@ -712,7 +744,7 @@ void TracePhoton(Photon &photon) {
       // Don't store photon as this will be done by the raytracer
     }
     // TRANSMISSION
-    else if (random < (intersection.material[0] + intersection.material[1] + intersection.material[2])) {
+    else if (materialValue < (intersection.material[0] + intersection.material[1] + intersection.material[2])) {
 
       bool outside = (glm::dot(photon.direction, vec3(intersection.normal)) < 0);
       vec3 offset = 0.00001f * vec3(intersection.normal);
@@ -730,9 +762,12 @@ void TracePhoton(Photon &photon) {
     // ABSORPTION
     else {
       photon.position = vec3(intersection.position);
+      photon.power = photon.power * intersection.colour;
+
+      globalPhotonMap.push_back(photon);
+
       photonAbsorbed = true;
 
-      // globalPhotonMap.push_back(photon);
     }
   }
 }
